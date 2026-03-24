@@ -48,15 +48,13 @@ echo "Metric,Result" > "$csvLog"
 
 run_benchmark() {
     local src=$1; local dstBase=$2; local mode=$3
-    echo -e "\n--- Starting $mode Phase ---"
+    echo -e "\n>>> STARTING $mode SPEED TEST PHASE <<<" >&2
     
     # Calculate size in MB
     sizeMB=$(du -sm "$src" | cut -f1)
 
     for i in {1..5}; do
-        # --- NEW PROGRESS LINE ---
-        echo ">> Starting $mode loop #$i..." 
-        
+        echo -n "  Loop $i: Copying..." >&2
         targetDir="$dstBase/copyfiles_$(date +%H%M%S)"
         mkdir -p "$targetDir"
         
@@ -66,22 +64,26 @@ run_benchmark() {
         
         runtime=$(echo "$end - $start" | bc)
         [[ $(echo "$runtime < 0.1" | bc) -eq 1 ]] && runtime=0.1
+        
+        # --- NEW: Format to 1 decimal place ---
+        sec_fmt=$(printf "%.1f" $runtime)
         speed=$(echo "scale=2; $sizeMB / $runtime" | bc)
         
-        # Save to CSV
-        echo "time ($mode $i),${runtime} s" >> "$csvLog"
+        # Save formatted results to CSV
+        echo "time ($mode $i),${sec_fmt} s" >> "$csvLog"
         echo "speed ($mode $i),${speed} MB/s" >> "$csvLog"
         
-        echo "Finished loop #$i: ${runtime}s | ${speed}MB/s"
+        # Display formatted results to screen
+        echo " DONE. Speed: ${speed} MB/s (${sec_fmt}s)" >&2
         
-        # Cleanup except last loop
         if [[ $i -lt 5 ]]; then 
             rm -rf "$targetDir"
         else 
-            echo "$targetDir" # This sends the path to the variable for the next phase
+            echo "$targetDir" 
         fi
     done
 }
+
 
 # Run Benchmark and Capture last folder paths for cleanup
 lastOnDisk=$(run_benchmark "$sourcePath" "$destDisk" "Write" | tail -n 1)
