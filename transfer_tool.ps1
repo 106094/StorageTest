@@ -52,11 +52,11 @@ function Run-Transfer ($src, $dstBase, $type) {
         Copy-Item -Path "$src\*" -Destination $targetDir -Recurse -Force
         $end = Get-Date
         
-        $sampleFile = ($srcFiles | Select-Object -First 1)
-        $targetFilePath = Join-Path $targetDir $sampleFile.Name
+        $sampleFile = ($srcFiles | Select-Object -First 1).fullname
+        $targetFilePath = $sampleFile.Replace($src,$targetDir)
         $dstCount = (Get-ChildItem $targetDir -Recurse -File).Count
         
-        $srcHash = (Get-FileHash $sampleFile.FullName).Hash
+        $srcHash = (Get-FileHash $sampleFile).Hash
         $dstHash = (Get-FileHash $targetFilePath).Hash
 
         if ($srcHash -eq $dstHash -and $srcCount -eq $dstCount) {
