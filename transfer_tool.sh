@@ -36,7 +36,7 @@ destDisk="${volumes[$choice]}"
 csvLog="./copying_$(date +%Y%m%d_%H%M).csv"
 echo "Metric,Result" > "$csvLog"
 
-# 3. Cache Clearing Logic (Crucial for Read Speed)
+# 3. Cache Clearing Logic (Crucial for Read Speed) User Experience without clearing the cache,
 #clear_cache() {
 #    echo -n "  Clearing RAM Cache..." >&2
 #    if [[ "$OSTYPE" == "darwin"* ]]; then
@@ -54,16 +54,20 @@ run_benchmark() {
     sizeMB=$(du -sm "$src" | cut -f1)
 
     for i in {1..5}; do
-        # For Read tests, we MUST clear cache before every single loop
-        if [[ "$mode" == "Read" ]]; then clear_cache; fi
-
         echo -n "  Loop $i: Copying..." >&2
-        targetDir="$dstBase/copyfiles_$(date +%H%M%S)"
+        
+        # FIX: For Read phase, use /tmp to avoid permission issues in home folders
+        if [[ "$mode" == "Read" ]]; then
+            targetDir="/tmp/readtest_$(date +%H%M%S)"
+        else
+            targetDir="$dstBase/copyfiles_$(date +%H%M%S)"
+        fi
+        
         mkdir -p "$targetDir"
         
         start=$(date +%s.%N)
-        # Universal Rsync: ignore perms/times to prevent "Operation not permitted" on USB
         rsync -rlD --no-p --no-o --no-g --size-only "$src/" "$targetDir/"
+        sync # Commits buffer to disk for better UX timing
         end=$(date +%s.%N)
         
         runtime=$(echo "$end - $start" | bc)
@@ -81,8 +85,11 @@ run_benchmark() {
 }
 
 # 5. Execute
+# Write from System to USB
 lastOnDisk=$(run_benchmark "$sourcePath" "$destDisk" "Write" | tail -n 1)
-lastOnSys=$(run_benchmark "$lastOnDisk" "$sourcePath" "Read" | tail -n 1)
+
+# Read from USB back to System (/tmp)
+lastOnSys=$(run_benchmark "$lastOnDisk" "/tmp" "Read" | tail -n 1)
 
 # Cleanup
 echo -e "\nCleaning up..."
