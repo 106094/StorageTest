@@ -28,7 +28,7 @@ for ($i=0; $i -lt $disks.Count; $i++) {
 $choice = Read-Host "Enter number"
 $destDisk = "$($disks[[int]$choice].Name):\"
 
-
+ $global:lastTarget=@()
 # Setup CSV Logging
 $timestamp = Get-Date -Format "yyyyMMdd_HHmm"
 $csvLog = Join-Path $PSScriptRoot "copying_$timestamp.csv"
@@ -68,7 +68,7 @@ function Run-Transfer ($src, $dstBase, $type) {
         if ($i -lt 5) { 
             Remove-Item $targetDir -Recurse -Force 
         } else { 
-            $global:lastTarget = $targetDir 
+            $global:lastTarget+= $targetDir 
         }
     }
 }
@@ -82,4 +82,6 @@ Write-Host "`n--- Starting Reverse Transfer ---" -ForegroundColor Yellow
 Run-Transfer $global:lastTarget $source "Read"
 
 Write-Host "`nDone! CSV Log: $csvLog" -ForegroundColor Cyan
-remove-item $global:lastTarget -r -Force
+$global:lastTarget|ForEach-Object{
+remove-item $_ -r -Force
+}
