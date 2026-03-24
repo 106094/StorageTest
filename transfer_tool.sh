@@ -46,8 +46,6 @@ echo "Metric,Result" > "$csvLog"
 #   fi
 #   echo " Done." >&2
 #}
-
-# 4. Benchmark Function
 run_benchmark() {
     local src=$1; local dstBase=$2; local mode=$3
     echo -e "\n>>> STARTING $mode SPEED TEST PHASE <<<" >&2
@@ -56,7 +54,7 @@ run_benchmark() {
     for i in {1..5}; do
         echo -n "  Loop $i: Copying..." >&2
         
-        # FIX: For Read phase, use /tmp to avoid permission issues in home folders
+        # For Read phase, use /tmp to avoid permission issues
         if [[ "$mode" == "Read" ]]; then
             targetDir="/tmp/readtest_$(date +%H%M%S)"
         else
@@ -66,8 +64,8 @@ run_benchmark() {
         mkdir -p "$targetDir"
         
         start=$(date +%s.%N)
+        # Using rsync without sync for maximum "User Experience" speed
         rsync -rlD --no-p --no-o --no-g --size-only "$src/" "$targetDir/"
-        sync # Commits buffer to disk for better UX timing
         end=$(date +%s.%N)
         
         runtime=$(echo "$end - $start" | bc)
@@ -84,15 +82,15 @@ run_benchmark() {
     done
 }
 
-# 5. Execute
-# Write from System to USB
+# 4. Execute
+# Write: System -> USB
 lastOnDisk=$(run_benchmark "$sourcePath" "$destDisk" "Write" | tail -n 1)
 
-# Read from USB back to System (/tmp)
+# Read: USB -> System (/tmp)
 lastOnSys=$(run_benchmark "$lastOnDisk" "/tmp" "Read" | tail -n 1)
 
 # Cleanup
 echo -e "\nCleaning up..."
 rm -rf "$lastOnDisk"
 rm -rf "$lastOnSys"
-echo -e "Done! CSV Results: $csvLog"
+echo -e "Done! Results: $csvLog"
