@@ -47,9 +47,8 @@ function Run-Transfer ($src, $dstBase, $type) {
         Copy-Item -Path "$src\*" -Destination $targetDir -Recurse -Force
         $end = Get-Date
         
-        # PowerShell 5.1 Compatible Verification (Sample File)
-        $srcFile = (Get-ChildItem $src -File | Select-Object -First 1).FullName
-        $dstFile = (Get-ChildItem $targetDir -File | Select-Object -First 1).FullName
+        $srcFile = (Get-ChildItem $src -r -File | Select-Object -First 1).FullName
+        $dstFile = (Get-ChildItem $targetDir -r -File | Select-Object -First 1).FullName
         $srcHash = (Get-FileHash $srcFile).Hash
         $dstHash = (Get-FileHash $dstFile).Hash
         
@@ -79,7 +78,8 @@ Run-Transfer $source $destDisk "Write"
 
 # Run Reverse (10. Loop 5 times from Destination back to Source)
 Write-Host "`n--- Starting Reverse Transfer ---" -ForegroundColor Yellow
-Run-Transfer $global:lastTarget $source "Read"
+$readdest=split-path $source
+Run-Transfer $global:lastTarget[0] $readdest "Read"
 
 Write-Host "`nDone! CSV Log: $csvLog" -ForegroundColor Cyan
 $global:lastTarget|ForEach-Object{
