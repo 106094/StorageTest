@@ -35,6 +35,11 @@ $csvLog = Join-Path $PSScriptRoot "copying_$timestamp.csv"
 "Metric,Result" | Out-File -FilePath $csvLog -Encoding utf8
 
 function Run-Transfer ($src, $dstBase, $type) {
+    Write-Host "`n--- Testing $mode Speed (5 Loops) ---" -ForegroundColor Yellow
+    $srcFiles = Get-ChildItem $src -Recurse -File
+    $totalSize = ($srcFiles | Measure-Object -Property Length -Sum).Sum / 1MB
+    $srcCount = $srcFiles.Count
+
     # Calculate size for speed (MB)
     $files = Get-ChildItem $src -Recurse -File
     $totalSize = ($files | Measure-Object -Property Length -Sum).Sum / 1MB
@@ -47,19 +52,27 @@ function Run-Transfer ($src, $dstBase, $type) {
         Copy-Item -Path "$src\*" -Destination $targetDir -Recurse -Force
         $end = Get-Date
         
-        $srcFile = (Get-ChildItem $src -r -File | Select-Object -First 1).FullName
-        $dstFile = (Get-ChildItem $targetDir -r -File | Select-Object -First 1).FullName
-        $srcHash = (Get-FileHash $srcFile).Hash
-        $dstHash = (Get-FileHash $dstFile).Hash
+        $sampleFile = ($srcFiles | Select-Object -First 1)
+        $targetFilePath = Join-Path $targetDir $sampleFile.Name
+        $dstCount = (Get-ChildItem $targetDir -Recurse -File).Count
         
-        if ($srcHash -eq $dstHash) { $status = "Verified" } else { $status = "FAILED" }
-        
+        $srcHash = (Get-FileHash $sampleFile.FullName).Hash
+        $dstHash = (Get-FileHash $targetFilePath).Hash
+
+        if ($srcHash -eq $dstHash -and $srcCount -eq $dstCount) {
+            $status = "Verified"
+        } else {
+            $status = "FAILED"
+        }
+
         $sec = [math]::Round(($end - $start).TotalSeconds, 2)
+        if ($sec -eq 0) { $sec = 0.01 } # Prevent divide by zero
         $speed = [math]::Round($totalSize / $sec, 2)
+
         
         # Save to CSV exactly as requested
-        "$type time ($i),$sec s" | Out-File -FilePath $csvLog -Append -Encoding utf8
-        "$type speed ($i),$speed MB/s" | Out-File -FilePath $csvLog -Append -Encoding utf8
+        "time ($type $i),$sec s" | Out-File -FilePath $csvLog -Append -Encoding utf8
+        "speed ($type $i),$speed MB/s" | Out-File -FilePath $csvLog -Append -Encoding utf8
         
         Write-Host "$type Loop $($i): $sec s | $speed MB/s | Result: $status"
         
@@ -85,3 +98,5 @@ Write-Host "`nDone! CSV Log: $csvLog" -ForegroundColor Cyan
 $global:lastTarget|ForEach-Object{
 remove-item $_ -r -Force
 }
+[System.Media.SystemSounds]::Beep.Play()
+Pause
