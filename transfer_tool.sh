@@ -100,4 +100,10 @@ lastOnSys=$(run_benchmark "$lastOnDisk" "/tmp" "Read" | tail -n 1)
 echo -e "\nCleaning up..."
 rm -rf "$lastOnDisk"
 rm -rf "$lastOnSys"
+
+# Final Recycle Bin Purge
+if [ -d "$destDisk/@Recycle" ]; then
+    echo "Performing final NAS Recycle Bin purge..."
+    rm -rf "$destDisk"/@Recycle/*
+fi
 echo -e "Done! Results: $csvLog"
