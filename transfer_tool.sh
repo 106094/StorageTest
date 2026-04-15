@@ -1,5 +1,5 @@
 #!/bin/bash
-
+unalias rm 2>/dev/null
 # 1. Cross-Platform Folder Picker
 if [[ "$OSTYPE" == "darwin"* ]]; then
     sourcePath=$(osascript -e 'POSIX path of (choose folder with prompt "Select Source Folder")')
@@ -15,7 +15,8 @@ fi
 # 2. Select Destination Disk
 echo -e "\n--- Available External Disks ---"
 if [[ "$OSTYPE" == "darwin"* ]]; then
-    volumes=($(find /Volumes -maxdepth 1 -mindepth 1 -type d ! -name "Macintosh HD"))
+    volumes=($(find /Volumes -maxdepth 1 -mindepth 1 -type d ! -name "Macintosh HD" | grep -Ff <(smbutil statshares -a | awk '/^[A-Za-z]/ && !/SHARE/ && !/===/ {print $1}')
+))
 elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
 	volumes=($(lsblk -p -n -o MOUNTPOINT | grep -E '^/mnt/|^/media/' | grep -vE '^/mnt/(c|wsl|wslg)($|/)'))
     if [ ${#volumes[@]} -eq 0 ]; then
@@ -78,7 +79,13 @@ run_benchmark() {
         echo "speed ($mode $i),${speed} MB/s" >> "$csvLog"
         echo " DONE. Speed: ${speed} MB/s (${sec_fmt}s)" >&2
         
-        if [[ $i -lt 5 ]]; then rm -rf "$targetDir"; else echo "$targetDir"; fi
+        if [[ $i -lt 5 ]]; then
+          rm -rf "$targetDir"
+            if [[ "$mode" == "Write" && -d "$dstBase/@Recycle" ]]; then
+                rm -rf "$dstBase"/@Recycle/*
+            fi
+        else echo "$targetDir"
+        fi
     done
 }
 
