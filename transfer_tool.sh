@@ -77,6 +77,7 @@ run_benchmark() {
                     { rm -rf "$dstBase"/@Recycle/.[^.]* "$dstBase"/@Recycle/*; } 2>/dev/null
                     ((attempts++))
                     [[ $attempts -lt 5 ]] && sleep 2 && echo -n "." >&2
+                    { rm -rf "$destDisk"/@Recycle/.[^.]* "$destDisk"/@Recycle/*; } 2>/dev/null 
                 done
                 echo " Ready." >&2
             fi
@@ -103,6 +104,7 @@ if [ -d "$destDisk/@Recycle" ]; then
         { rm -rf "$destDisk"/@Recycle/.[^.]* "$destDisk"/@Recycle/*; } 2>/dev/null
         ((attempts++))
         [[ $attempts -lt 5 ]] && sleep 2 && echo -n "." >&2
+        { rm -rf "$destDisk"/@Recycle/.[^.]* "$destDisk"/@Recycle/*; } 2>/dev/null
     done
     echo " Ready." >&2
 fi
