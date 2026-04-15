@@ -82,7 +82,7 @@ run_benchmark() {
         if [[ $i -lt 5 ]]; then
           rm -rf "$targetDir"
             if [[ "$mode" == "Write" && -d "$dstBase/@Recycle" ]]; then
-              rm -rf "$dstBase"/@Recycle/* 2>/dev/null
+              {rm -rf "$dstBase"/@Recycle/*} 2>/dev/null
             fi
         else echo "$targetDir"
         fi
@@ -104,6 +104,6 @@ rm -rf "$lastOnSys"
 # Final Recycle Bin Purge
 if [ -d "$destDisk/@Recycle" ]; then
     echo "Performing final NAS Recycle Bin purge..."
-    rm -rf "$destDisk"/@Recycle/* 2>/dev/null
+    {rm -rf "$destDisk"/@Recycle/*} 2>/dev/null
 fi
 echo -e "Done! Results: $csvLog"
