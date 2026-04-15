@@ -1,5 +1,6 @@
 # 1. Input Source
 # Load the required Windows Forms assembly
+Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy Bypass -Force;
 Add-Type -AssemblyName System.Windows.Forms
 
 # Create the Folder Browser Dialog object
@@ -33,6 +34,25 @@ $destDisk = "$($disks[[int]$choice].Name):\"
 $timestamp = Get-Date -Format "yyyyMMdd_HHmm"
 $csvLog = Join-Path $PSScriptRoot "copying_$timestamp.csv"
 "Metric,Result" | Out-File -FilePath $csvLog -Encoding utf8
+
+function clean-recycle($top){
+ $recyclebin=join-path $top "@Recycle"
+ if((test-path $recyclebin) -and (Get-ChildItem $recyclebin\*)){
+  Write-host "Purging NAS Recycle Bin..."
+  try{
+  rm $recyclebin\* -Recurse -Force}
+  catch{
+  $null
+  }
+  start-sleep -s 2
+  while (Get-ChildItem $recyclebin\*){
+    remove-item $recyclebin\* -Recurse -Force
+    start-sleep -s 2
+     }
+   Write-host "completed" -NoNewline
+  }
+}
+
 
 function Run-Transfer ($src, $dstBase, $type) {
     Write-Host "`n--- Testing $mode Speed (5 Loops) ---" -ForegroundColor Yellow
@@ -78,7 +98,11 @@ function Run-Transfer ($src, $dstBase, $type) {
         
         # 9. Delete unless it's the last loop
         if ($i -lt 5) { 
-            Remove-Item $targetDir -Recurse -Force 
+            Remove-Item $targetDir -Recurse -Force
+            if($type -eq "Write"){
+            clean-recycle -top $dstBase
+            }
+
         } else { 
             $global:lastTarget+= $targetDir 
         }
@@ -94,9 +118,12 @@ Write-Host "`n--- Starting Reverse Transfer ---" -ForegroundColor Yellow
 $readdest=split-path $source
 Run-Transfer $global:lastTarget[0] $readdest "Read"
 
-Write-Host "`nDone! CSV Log: $csvLog" -ForegroundColor Cyan
 $global:lastTarget|ForEach-Object{
 remove-item $_ -r -Force
 }
+
+clean-recycle -top $destDisk
+ 
+Write-Host "`nDone! CSV Log: $csvLog" -ForegroundColor Cyan
 [System.Media.SystemSounds]::Beep.Play()
 Pause
