@@ -38,7 +38,7 @@ $csvLog = Join-Path $PSScriptRoot "copying_$timestamp.csv"
 function clean-recycle($top){
  $recyclebin=join-path $top "@Recycle"
  if((test-path $recyclebin) -and (Get-ChildItem $recyclebin\*)){
-  Write-host "Purging NAS Recycle Bin..."
+  Write-host "Purging NAS Recycle Bin..." -NoNewline
   try{
   rm $recyclebin\* -Recurse -Force}
   catch{
@@ -49,7 +49,7 @@ function clean-recycle($top){
     remove-item $recyclebin\* -Recurse -Force
     start-sleep -s 2
      }
-   Write-host "completed" -NoNewline
+   Write-host "completed"
   }
 }
 
