@@ -55,7 +55,7 @@ function clean-recycle($top){
 
 
 function Run-Transfer ($src, $dstBase, $type) {
-    Write-Host "`n--- Testing $mode Speed (5 Loops) ---" -ForegroundColor Yellow
+    Write-Host "`n--- Testing $type Speed (5 Loops) ---" -ForegroundColor Yellow
     $srcFiles = Get-ChildItem $src -Recurse -File
     $totalSize = ($srcFiles | Measure-Object -Property Length -Sum).Sum / 1MB
     $srcCount = $srcFiles.Count
@@ -110,11 +110,11 @@ function Run-Transfer ($src, $dstBase, $type) {
 }
 
 # Run Forward
-Write-Host "`n--- Starting Forward Transfer ---" -ForegroundColor Green
+Write-Host "`n--- Starting Write Testing ---" -ForegroundColor Green
 Run-Transfer $source $destDisk "Write"
 
 # Run Reverse (10. Loop 5 times from Destination back to Source)
-Write-Host "`n--- Starting Reverse Transfer ---" -ForegroundColor Yellow
+Write-Host "`n--- Starting Read testing ---" -ForegroundColor Green
 $readdest=split-path $source
 Run-Transfer $global:lastTarget[0] $readdest "Read"
 
