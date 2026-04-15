@@ -1,5 +1,6 @@
 #!/bin/bash
 unalias rm 2>/dev/null
+
 # 1. Cross-Platform Folder Picker
 if [[ "$OSTYPE" == "darwin"* ]]; then
     sourcePath=$(osascript -e 'POSIX path of (choose folder with prompt "Select Source Folder")')
@@ -15,10 +16,9 @@ fi
 # 2. Select Destination Disk
 echo -e "\n--- Available External Disks ---"
 if [[ "$OSTYPE" == "darwin"* ]]; then
-    volumes=($(find /Volumes -maxdepth 1 -mindepth 1 -type d ! -name "Macintosh HD" | grep -Ff <(smbutil statshares -a | awk '/^[A-Za-z]/ && !/SHARE/ && !/===/ {print $1}')
-))
+    volumes=($(find /Volumes -maxdepth 1 -mindepth 1 -type d ! -name "Macintosh HD" | grep -Ff <(smbutil statshares -a | awk '/^[A-Za-z]/ && !/SHARE/ && !/===/ {print $1}')))
 elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
-	volumes=($(lsblk -p -n -o MOUNTPOINT | grep -E '^/mnt/|^/media/' | grep -vE '^/mnt/(c|wsl|wslg)($|/)'))
+    volumes=($(lsblk -p -n -o MOUNTPOINT | grep -E '^/mnt/|^/media/' | grep -vE '^/mnt/(c|wsl|wslg)($|/)'))
     if [ ${#volumes[@]} -eq 0 ]; then
         volumes=($(find /mnt -maxdepth 1 -mindepth 1 -type d ! -path "/mnt/c" ! -path "/mnt/wsl*"))
     fi
@@ -37,16 +37,6 @@ destDisk="${volumes[$choice]}"
 csvLog="./copying_$(date +%Y%m%d_%H%M).csv"
 echo "Metric,Result" > "$csvLog"
 
-# 3. Cache Clearing Logic (Crucial for Read Speed) User Experience without clearing the cache,
-#clear_cache() {
-#    echo -n "  Clearing RAM Cache..." >&2
-#    if [[ "$OSTYPE" == "darwin"* ]]; then
-#        sudo purge
-#   elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
-#        sync && echo 3 | sudo tee /proc/sys/vm/drop_caches > /dev/null
-#   fi
-#   echo " Done." >&2
-#}
 run_benchmark() {
     local src=$1; local dstBase=$2; local mode=$3
     echo -e "\n>>> STARTING $mode SPEED TEST PHASE <<<" >&2
@@ -55,7 +45,6 @@ run_benchmark() {
     for i in {1..5}; do
         echo -n "  Loop $i: Copying..." >&2
         
-        # For Read phase, use /tmp to avoid permission issues
         if [[ "$mode" == "Read" ]]; then
             targetDir="/tmp/readtest_$(date +%H%M%S)"
         else
@@ -65,8 +54,7 @@ run_benchmark() {
         mkdir -p "$targetDir"
         
         start=$(date +%s.%N)
-        # Using rsync without sync for maximum "User Experience" speed
-        rsync -rlD --no-p --no-o --no-g --size-only "$src/" "$targetDir/"
+        rsync -rlD --no-p --no-o --no-g --size-only --exclude={'@Recycle','@Recently-Snapshot'} "$src/" "$targetDir/"
         end=$(date +%s.%N)
         
         runtime=$(echo "$end - $start" | bc)
@@ -80,20 +68,26 @@ run_benchmark() {
         echo " DONE. Speed: ${speed} MB/s (${sec_fmt}s)" >&2
         
         if [[ $i -lt 5 ]]; then
-          rm -rf "$targetDir"
+            rm -rf "$targetDir"
             if [[ "$mode" == "Write" && -d "$dstBase/@Recycle" ]]; then
-              {rm -rf "$dstBase"/@Recycle/*} 2>/dev/null
+                echo -n "  Purging NAS Recycle Bin..." >&2
+                attempts=0
+                while [ -n "$(ls -A "$dstBase/@Recycle" 2>/dev/null)" ] && [ $attempts -lt 5 ]; do
+                    # Corrected spacing and semicolons inside braces
+                    { rm -rf "$dstBase"/@Recycle/.[^.]* "$dstBase"/@Recycle/*; } 2>/dev/null
+                    ((attempts++))
+                    [[ $attempts -lt 5 ]] && sleep 2 && echo -n "." >&2
+                done
+                echo " Ready." >&2
             fi
-        else echo "$targetDir"
+        else 
+            echo "$targetDir"
         fi
     done
 }
 
 # 4. Execute
-# Write: System -> USB
 lastOnDisk=$(run_benchmark "$sourcePath" "$destDisk" "Write" | tail -n 1)
-
-# Read: USB -> System (/tmp)
 lastOnSys=$(run_benchmark "$lastOnDisk" "/tmp" "Read" | tail -n 1)
 
 # Cleanup
@@ -103,7 +97,14 @@ rm -rf "$lastOnSys"
 
 # Final Recycle Bin Purge
 if [ -d "$destDisk/@Recycle" ]; then
-    echo "Performing final NAS Recycle Bin purge..."
-    {rm -rf "$destDisk"/@Recycle/*} 2>/dev/null
+    echo -n "Performing final NAS Recycle Bin purge..."
+    attempts=0     
+    while [ -n "$(ls -A "$destDisk/@Recycle" 2>/dev/null)" ] && [ $attempts -lt 5 ]; do
+        { rm -rf "$destDisk"/@Recycle/.[^.]* "$destDisk"/@Recycle/*; } 2>/dev/null
+        ((attempts++))
+        [[ $attempts -lt 5 ]] && sleep 2 && echo -n "." >&2
+    done
+    echo " Ready." >&2
 fi
+
 echo -e "Done! Results: $csvLog"
