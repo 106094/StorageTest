@@ -71,10 +71,11 @@ run_benchmark() {
             rm -rf "$targetDir"
             if [[ "$mode" == "Write" && -d "$dstBase/@Recycle" ]]; then
                 echo -n "  Purging NAS Recycle Bin..." >&2
+                { rm -rf "$dstBase"/@Recycle/.[^.]* "$dstBase"/@Recycle/*; } 2>/dev/null
+                sleep 2 
                 attempts=0
                 while [ -n "$(ls -A "$dstBase/@Recycle" 2>/dev/null)" ] && [ $attempts -lt 5 ]; do
                     # Corrected spacing and semicolons inside braces
-                    { rm -rf "$dstBase"/@Recycle/.[^.]* "$dstBase"/@Recycle/*; } 2>/dev/null
                     ((attempts++))
                     [[ $attempts -lt 5 ]] && sleep 2 && echo -n "." >&2
                     { rm -rf "$destDisk"/@Recycle/.[^.]* "$destDisk"/@Recycle/*; } 2>/dev/null 
@@ -99,9 +100,10 @@ rm -rf "$lastOnSys"
 # Final Recycle Bin Purge
 if [ -d "$destDisk/@Recycle" ]; then
     echo -n "Performing final NAS Recycle Bin purge..."
+    { rm -rf "$destDisk"/@Recycle/.[^.]* "$destDisk"/@Recycle/*; } 2>/dev/null
+    sleep 2
     attempts=0     
     while [ -n "$(ls -A "$destDisk/@Recycle" 2>/dev/null)" ] && [ $attempts -lt 5 ]; do
-        { rm -rf "$destDisk"/@Recycle/.[^.]* "$destDisk"/@Recycle/*; } 2>/dev/null
         ((attempts++))
         [[ $attempts -lt 5 ]] && sleep 2 && echo -n "." >&2
         { rm -rf "$destDisk"/@Recycle/.[^.]* "$destDisk"/@Recycle/*; } 2>/dev/null
