@@ -55,7 +55,7 @@ function clean-recycle($top){
 
 
 function Run-Transfer ($src, $dstBase, $type) {
-    Write-Host "`n--- Testing $type Speed (5 Loops) ---" -ForegroundColor Yellow
+    Write-Host "--- Testing $type Speed (5 Loops) ---" -ForegroundColor Yellow
     $srcFiles = Get-ChildItem $src -Recurse -File
     $totalSize = ($srcFiles | Measure-Object -Property Length -Sum).Sum / 1MB
     $srcCount = $srcFiles.Count
