@@ -17,21 +17,26 @@ fi
 echo -e "\n--- Available External Disks ---"
 if [[ "$OSTYPE" == "darwin"* ]]; then
     volumes=($(find /Volumes -maxdepth 1 -mindepth 1 -type d ! -name "Macintosh HD" | grep -Ff <(smbutil statshares -a | awk '/^[A-Za-z]/ && !/SHARE/ && !/===/ {print $1}')))
+	if [ ${#volumes[@]} -eq 0 ]; then
+	    echo "No external volumes found! Check mounting."
+	    exit 1
+	fi
+	for i in "${!volumes[@]}"; do echo "[$i] ${volumes[$i]}"; done
+	read -p "Select disk number: " choice
+	destDisk="${volumes[$choice]}"
 elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
-    volumes=($(lsblk -p -n -o MOUNTPOINT | grep -E '^/mnt/|^/media/' | grep -vE '^/mnt/(c|wsl|wslg)($|/)'))
-    if [ ${#volumes[@]} -eq 0 ]; then
-        volumes=($(find /mnt -maxdepth 1 -mindepth 1 -type d ! -path "/mnt/c" ! -path "/mnt/wsl*"))
-    fi
+	MY_UID=$(id -u)
+	VIRTUAL_PATH=$(ls -d /run/user/$MY_UID/gvfs/smb-share* 2>/dev/null)
+	if [[ -d "$VIRTUAL_PATH" ]]; then
+	    echo "NAS found at $VIRTUAL_PATH"
+	    rm -f ~/nas_link
+	    ln -s "$VIRTUAL_PATH" ~/nas_link
+	    destDisk="$HOME/nas_link"
+	else
+	    echo "Warning: NAS not found! Please click the NAS in your file manager first."
+	    exit 1
+	fi
 fi
-
-if [ ${#volumes[@]} -eq 0 ]; then
-    echo "No external volumes found! Check mounting."
-    exit 1
-fi
-
-for i in "${!volumes[@]}"; do echo "[$i] ${volumes[$i]}"; done
-read -p "Select disk number: " choice
-destDisk="${volumes[$choice]}"
 
 # Setup CSV
 csvLog="./copying_$(date +%Y%m%d_%H%M).csv"
@@ -48,13 +53,14 @@ run_benchmark() {
         if [[ "$mode" == "Read" ]]; then
             targetDir="/tmp/readtest_$(date +%H%M%S)"
         else
-            targetDir="$dstBase/copyfiles_$(date +%H%M%S)"
+            targetDir="$dstBase/${mode}Test_$(date +%H%M%S)"
         fi
         
         mkdir -p "$targetDir"
         
         start=$(date +%s.%N)
-        rsync -rlD --no-p --no-o --no-g --size-only --exclude={'@Recycle','@Recently-Snapshot'} "$src/" "$targetDir/"
+        rsync -rlD --inplace --no-p --no-o --no-g --size-only --exclude={'@Recycle','@Recently-Snapshot'} "$src/" "$targetDir"
+
         end=$(date +%s.%N)
         
         runtime=$(echo "$end - $start" | bc)
@@ -78,7 +84,7 @@ run_benchmark() {
                     # Corrected spacing and semicolons inside braces
                     ((attempts++))
                     [[ $attempts -lt 5 ]] && sleep 2 && echo -n "." >&2
-                    { rm -rf "$destDisk"/@Recycle/.[^.]* "$destDisk"/@Recycle/*; } 2>/dev/null 
+                    { rm -rf "$dstBase"/@Recycle/.[^.]* "$dstBase"/@Recycle/*; } 2>/dev/null 
                 done
                 echo " Ready." >&2
             fi
