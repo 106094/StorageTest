@@ -37,6 +37,15 @@ elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
 	    exit 1
 	fi
 fi
+# --- NEW: Dynamic Recycle Bin Detection ---
+recycleName=""
+for name in "@Recycle" "#recycle" "@recycle" "Network Trash Folder"; do
+    if [[ -d "$destDisk/$name" ]]; then
+        recycleName="$name"
+        break
+    fi
+done
+[[ -n "$recycleName" ]] && echo "Detected Recycle Bin: $recycleName"
 
 # Setup CSV
 csvLog="./copying_$(date +%Y%m%d_%H%M).csv"
@@ -49,18 +58,10 @@ run_benchmark() {
 
     for i in {1..5}; do
         echo -n "  Loop $i: Copying..." >&2
-        
-        if [[ "$mode" == "Read" ]]; then
-            targetDir="/tmp/readtest_$(date +%H%M%S)"
-        else
-            targetDir="$dstBase/${mode}Test_$(date +%H%M%S)"
-        fi
-        
+        targetDir=$([[ "$mode" == "Read" ]] && echo "/tmp/readtest_$i" || echo "$dstBase/${mode}Test_$i")       
         mkdir -p "$targetDir"
-        
         start=$(date +%s.%N)
-        rsync -rlD --inplace --no-p --no-o --no-g --size-only --exclude={'@Recycle','@Recently-Snapshot'} "$src/" "$targetDir"
-
+        rsync -rlD --inplace --no-p --no-o --no-g --size-only --exclude={"$recycleName","@Recently-Snapshot"} "$src/" "$targetDir"
         end=$(date +%s.%N)
         
         runtime=$(echo "$end - $start" | bc)
@@ -77,14 +78,14 @@ run_benchmark() {
             rm -rf "$targetDir"
             if [[ "$mode" == "Write" && -d "$dstBase/@Recycle" ]]; then
                 echo -n "  Purging NAS Recycle Bin..." >&2
-                { rm -rf "$dstBase"/@Recycle/.[^.]* "$dstBase"/@Recycle/*; } 2>/dev/null
+				 {  rm -rf "$dstBase/$recycleName"/* "$dstBase/$recycleName"/.[^.]*; } 2>/dev/null
                 sleep 2 
                 attempts=0
                 while [ -n "$(ls -A "$dstBase/@Recycle" 2>/dev/null)" ] && [ $attempts -lt 5 ]; do
                     # Corrected spacing and semicolons inside braces
                     ((attempts++))
                     [[ $attempts -lt 5 ]] && sleep 2 && echo -n "." >&2
-                    { rm -rf "$dstBase"/@Recycle/.[^.]* "$dstBase"/@Recycle/*; } 2>/dev/null 
+				     {  rm -rf "$dstBase/$recycleName"/* "$dstBase/$recycleName"/.[^.]*; } 2>/dev/null
                 done
                 echo " Ready." >&2
             fi
@@ -104,15 +105,15 @@ rm -rf "$lastOnDisk"
 rm -rf "$lastOnSys"
 
 # Final Recycle Bin Purge
-if [ -d "$destDisk/@Recycle" ]; then
+if [ -d "$destDisk/$recycleName" ]; then
     echo -n "Performing final NAS Recycle Bin purge..."
-    { rm -rf "$destDisk"/@Recycle/.[^.]* "$destDisk"/@Recycle/*; } 2>/dev/null
+	{ rm -rf "$destDisk/$recycleName"/* "$destDisk/$recycleName"/.[^.]*; } 2>/dev/null
     sleep 2
     attempts=0     
-    while [ -n "$(ls -A "$destDisk/@Recycle" 2>/dev/null)" ] && [ $attempts -lt 5 ]; do
+    while [ -n "$(ls -A "$destDisk/$recycleName" 2>/dev/null)" ] && [ $attempts -lt 5 ]; do
         ((attempts++))
         [[ $attempts -lt 5 ]] && sleep 2 && echo -n "." >&2
-        { rm -rf "$destDisk"/@Recycle/.[^.]* "$destDisk"/@Recycle/*; } 2>/dev/null
+	    { rm -rf "$destDisk/$recycleName"/* "$destDisk/$recycleName"/.[^.]*; } 2>/dev/null
     done
     echo " Ready." >&2
 fi
