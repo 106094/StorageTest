@@ -39,7 +39,7 @@ elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
 fi
 # --- NEW: Dynamic Recycle Bin Detection ---
 recycleName=""
-for name in "@Recycle" "#recycle" "@recycle" "Network Trash Folder"; do
+for name in "@Recycle" "#recycle" "#Recycle" "@recycle" "Network Trash Folder"; do
     if [[ -d "$destDisk/$name" ]]; then
         recycleName="$name"
         break
@@ -76,12 +76,12 @@ run_benchmark() {
         
         if [[ $i -lt 5 ]]; then
             rm -rf "$targetDir"
-            if [[ "$mode" == "Write" && -d "$dstBase/@Recycle" ]]; then
+            if [[ "$mode" == "Write" && -d "$dstBase/$recycleName" ]]; then
                 echo -n "  Purging NAS Recycle Bin..." >&2
-				 {  rm -rf "$dstBase/$recycleName"/* "$dstBase/$recycleName"/.[^.]*; } 2>/dev/null
+		 {  rm -rf "$dstBase/$recycleName"/* "$dstBase/$recycleName"/.[^.]*; } 2>/dev/null
                 sleep 2 
                 attempts=0
-                while [ -n "$(ls -A "$dstBase/@Recycle" 2>/dev/null)" ] && [ $attempts -lt 5 ]; do
+                while [ -n "$(ls -A "$dstBase/$recycleName" 2>/dev/null)" ] && [ $attempts -lt 5 ]; do
                     # Corrected spacing and semicolons inside braces
                     ((attempts++))
                     [[ $attempts -lt 5 ]] && sleep 2 && echo -n "." >&2
