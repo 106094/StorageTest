@@ -2,38 +2,30 @@
 # Load the required Windows Forms assembly
 Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy Bypass -Force;
 Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName PresentationFramework
 
 # Create the Folder Browser Dialog object
 $folderBrowser = New-Object System.Windows.Forms.FolderBrowserDialog
 $folderBrowser.Description = "Select the source folder to transfer"
 $folderBrowser.ShowNewFolderButton = $false
 
-# Show the popup and check if the user clicked 'OK'
-$dialogResult = $folderBrowser.ShowDialog()
+$title = "Confirmation"
+$message = "Any other folder need to be executed?"
+$buttons = [System.Windows.MessageBoxButton]::YesNoCancel
+$icon = [System.Windows.MessageBoxImage]::Question
 
-if ($dialogResult -eq "OK") {
-    $source = $folderBrowser.SelectedPath
-    Write-Host "Source selected: $source" -ForegroundColor Green
-} else {
-    Write-Host "No folder selected. Exiting..." -ForegroundColor Red
-    exit
+$sources=@()
+while($true){
+    $dialogResult = $folderBrowser.ShowDialog()
+    if($dialogResult -eq "OK"){
+        $sources += $folderBrowser.SelectedPath
+        $response = [System.Windows.MessageBox]::Show($message, $title, $buttons, $icon)
+        if($response -eq "No") { break } # Stop asking and start testing
+        if($response -eq "Cancel") { exit } # Kill script
+    } else {
+        exit # User clicked Cancel/X on folder browser
+    }
 }
-
-
-# 2. Select Destination Disk from List
-$disks = Get-PSDrive -PSProvider FileSystem | Where-Object {$_.Name -ne "C" -and $_.Free -ne $null }
-Write-Host "`n--- Select Destination Disk (Input Number) ---" -ForegroundColor Cyan
-for ($i=0; $i -lt $disks.Count; $i++) { 
-    Write-Host "[$i] $($disks[$i].Name): ($($disks[$i].Root))" 
-}
-$choice = Read-Host "Enter number"
-$destDisk = "$($disks[[int]$choice].Name):\"
-
- $global:lastTarget=@()
-# Setup CSV Logging
-$timestamp = Get-Date -Format "yyyyMMdd_HHmm"
-$csvLog = Join-Path $PSScriptRoot "copying_$timestamp.csv"
-"Metric,Result" | Out-File -FilePath $csvLog -Encoding utf8
 
 function clean-recycle($top){
  
@@ -55,7 +47,7 @@ function clean-recycle($top){
 }
 
 
-function Run-Transfer ($src, $dstBase, $type) {
+function Run-Transfer ($src, $dstBase, $type, $sourcename) {
     Write-Host "--- Testing $type Speed (5 Loops) ---" -ForegroundColor Yellow
     $srcFiles = Get-ChildItem $src -Recurse -File
     $totalSize = ($srcFiles | Measure-Object -Property Length -Sum).Sum / 1MB
@@ -74,11 +66,11 @@ function Run-Transfer ($src, $dstBase, $type) {
         $end = Get-Date
         
         $sampleFile = ($srcFiles | Select-Object -First 1).fullname
-        $targetFilePath = $sampleFile.Replace($src,$targetDir)
-        $dstCount = (Get-ChildItem $targetDir -Recurse -File).Count
+        $targetFilePath = Join-Path $targetDir ($sampleFile.Substring($src.Length).TrimStart('\'))
+        $dstCount = (Get-ChildItem -LiteralPath $targetDir -Recurse -File).Count
         
-        $srcHash = (Get-FileHash $sampleFile).Hash
-        $dstHash = (Get-FileHash $targetFilePath).Hash
+        $srcHash = (Get-FileHash -LiteralPath $sampleFile).Hash
+        $dstHash = (Get-FileHash -LiteralPath $targetFilePath).Hash
 
         if ($srcHash -eq $dstHash -and $srcCount -eq $dstCount) {
             $status = "Verified"
@@ -92,8 +84,8 @@ function Run-Transfer ($src, $dstBase, $type) {
 
         
         # Save to CSV exactly as requested
-        "time ($type $i),$sec s" | Out-File -FilePath $csvLog -Append -Encoding utf8
-        "speed ($type $i),$speed MB/s" | Out-File -FilePath $csvLog -Append -Encoding utf8
+        "$sourcename,time ($type $i),$sec s" | Out-File -FilePath $csvLog -Append -Encoding utf8
+        "$sourcename,speed ($type $i),$speed MB/s" | Out-File -FilePath $csvLog -Append -Encoding utf8
         
         Write-Host "$type Loop $($i): $sec s | $speed MB/s | Result: $status"
         
@@ -105,19 +97,37 @@ function Run-Transfer ($src, $dstBase, $type) {
             }
 
         } else { 
-            $global:lastTarget+= $targetDir 
+            $global:lastTarget += $targetDir
         }
     }
 }
 
+# 2. Select Destination Disk from List
+$disks = Get-PSDrive -PSProvider FileSystem | Where-Object {$_.Name -ne "C" -and $_.Free -ne $null }
+Write-Host "`n--- Select Destination Disk (Input Number) ---" -ForegroundColor Cyan
+for ($i=0; $i -lt $disks.Count; $i++) { 
+    Write-Host "[$i] $($disks[$i].Name): ($($disks[$i].Root))" 
+}
+$choice = Read-Host "Enter number"
+$destDisk = "$($disks[[int]$choice].Name):\"
+
+$global:lastTarget=@()
+# Setup CSV Logging
+$timestamp = Get-Date -Format "yyyyMMdd_HHmm"
+$csvLog = Join-Path $PSScriptRoot "WriteReadLog_$timestamp.csv"
+"Source,Metric,Result" | Out-File -FilePath $csvLog -Encoding utf8
+
+foreach($source in $sources){
+
 # Run Forward
+$sourcename=(Get-item $source).Name
 Write-Host "`n--- Starting Write Testing ---" -ForegroundColor Green
-Run-Transfer $source $destDisk "Write"
+Run-Transfer -src $source -dstBase $destDisk -type "Write" -sourcename $sourcename
 
 # Run Reverse (10. Loop 5 times from Destination back to Source)
 Write-Host "`n--- Starting Read testing ---" -ForegroundColor Green
 $readdest=split-path $source
-Run-Transfer $global:lastTarget[0] $readdest "Read"
+Run-Transfer -src $global:lastTarget[-1]  -dstBase $readdest -type "Read" -sourcename $sourcename
 
 $global:lastTarget|ForEach-Object{
 remove-item $_ -r -Force
@@ -125,6 +135,8 @@ remove-item $_ -r -Force
 
 clean-recycle -top $destDisk
  
+}
+
 Write-Host "`nDone! CSV Log: $csvLog" -ForegroundColor Cyan
 [System.Media.SystemSounds]::Beep.Play()
 Pause
