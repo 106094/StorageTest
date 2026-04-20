@@ -37,7 +37,7 @@ $csvLog = Join-Path $PSScriptRoot "copying_$timestamp.csv"
 
 function clean-recycle($top){
  
- $recyclebin=(get-childitem $top -itemtype directory -filter "*Recycle*").fullname
+ $recyclebin=(get-childitem $top -Directory -filter "*Recycle*").fullname
  if((test-path $recyclebin) -and (Get-ChildItem $recyclebin\*)){
   Write-host "Purging NAS Recycle Bin..." -NoNewline
   try{
@@ -66,7 +66,7 @@ function Run-Transfer ($src, $dstBase, $type) {
     $totalSize = ($files | Measure-Object -Property Length -Sum).Sum / 1MB
     
     for ($i=1; $i -le 5; $i++) {
-        $targetDir = Join-Path $dstBase "copyfiles_$(Get-Date -Format 'HHmmss')"
+        $targetDir = Join-Path $dstBase "$($type)_$($i)_$(Get-Date -Format 'HHmmss')"
         New-Item -ItemType Directory -Path $targetDir -Force | Out-Null
         
         $start = Get-Date
