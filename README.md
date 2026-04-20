@@ -11,12 +11,12 @@
 -Cleanup: Temporary test folders are deleted automatically after the test.
 5. Review Results: Once finished, a CSV named WriteReadLog_YYYYMMDD_HHmm.csv will be created in the same folder as the script.
 📊 CSV Log Format
-- The log is structured for easy import into Excel:
-- Source	   Metric	        Result
-- FolderName	time (Write 1)	12.45 s
-- FolderName	speed (Write 1)	105.2 MB/s
-- FolderName	time (Read 1)	10.12 s
-- ...	...	...
+The log is structured for easy import into Excel:
+ Source	   Metric	        Result
+ FolderName	time (Write 1)	12.45 s
+ FolderName	speed (Write 1)	105.2 MB/s
+ FolderName	time (Read 1)	10.12 s
+ ...	...	...
 ## Mac
 1. Open terminal and cd to tool path
 2. sed -i '' 's/\r$//' ./transfer_tool.sh
