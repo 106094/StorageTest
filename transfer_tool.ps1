@@ -39,7 +39,7 @@ function clean-recycle($top){
   }
   start-sleep -s 2
   while (Get-ChildItem $recyclebin\*){
-    remove-item $recyclebin\* -Recurse -Force
+    remove-item $recyclebin\* -Recurse -Force -ErrorAction SilentlyContinue
     start-sleep -s 2
      }
    Write-host "completed"
@@ -48,7 +48,7 @@ function clean-recycle($top){
 
 
 function Run-Transfer ($src, $dstBase, $type, $sourcename) {
-    Write-Host "--- Testing $type Speed (5 Loops) ---" -ForegroundColor Yellow
+    Write-Host "--- ($($sourcename)) $type Speed (5 Loops) ---" -ForegroundColor Yellow
     $srcFiles = Get-ChildItem $src -Recurse -File
     $totalSize = ($srcFiles | Measure-Object -Property Length -Sum).Sum / 1MB
     $srcCount = $srcFiles.Count
@@ -91,7 +91,7 @@ function Run-Transfer ($src, $dstBase, $type, $sourcename) {
         
         # 9. Delete unless it's the last loop
         if ($i -lt 5) { 
-            Remove-Item $targetDir -Recurse -Force
+            Remove-Item $targetDir -Recurse -Force -ErrorAction SilentlyContinue
             if($type -eq "Write"){
             clean-recycle -top $dstBase
             }
@@ -130,7 +130,7 @@ $readdest=split-path $source
 Run-Transfer -src $global:lastTarget[-1]  -dstBase $readdest -type "Read" -sourcename $sourcename
 
 $global:lastTarget|ForEach-Object{
-remove-item $_ -r -Force
+remove-item $_ -r -Force -ErrorAction SilentlyContinue
 }
 
 clean-recycle -top $destDisk
