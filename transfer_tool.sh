@@ -66,7 +66,7 @@ csvLog="./WriteReadLog_$(date +%Y%m%d_%H%M).csv"
 echo "Source,Metric,Result" > "$csvLog"
 run_benchmark() {
     local src=$1; local dstBase=$2; local mode=$3; local sName=$4
-    echo -e "\n>>> STARTING $mode SPEED TEST PHASE <<<" >&2
+    echo -e "\n>>> STARTING $mode SPEED TEST ($sName) <<<" >&2
     sizeMB=$(du -sm "$src" | cut -f1)
 
     for i in {1..5}; do
