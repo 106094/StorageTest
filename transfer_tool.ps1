@@ -1,8 +1,18 @@
-# 1. Input Source
+
+
 # Load the required Windows Forms assembly
 Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy Bypass -Force;
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName PresentationFramework
+
+# 1. Select Destination Disk from List
+$disks = Get-PSDrive -PSProvider FileSystem | Where-Object {$_.Name -ne "C" -and $_.Free -ne $null }
+Write-Host "`n--- Select Destination Disk (Input Number) ---" -ForegroundColor Cyan
+for ($i=0; $i -lt $disks.Count; $i++) { 
+    Write-Host "[$i] $($disks[$i].Name): ($($disks[$i].Root))" 
+}
+$choice = Read-Host "Enter number"
+$destDisk = "$($disks[[int]$choice].Name):\"
 
 # Create the Folder Browser Dialog object
 $folderBrowser = New-Object System.Windows.Forms.FolderBrowserDialog
@@ -15,6 +25,7 @@ $buttons = [System.Windows.MessageBoxButton]::YesNoCancel
 $icon = [System.Windows.MessageBoxImage]::Question
 
 $sources=@()
+Write-Host "`n--- Select Source folder ---" -ForegroundColor Cyan
 while($true){
     $dialogResult = $folderBrowser.ShowDialog()
     if($dialogResult -eq "OK"){
@@ -45,7 +56,6 @@ function clean-recycle($top){
    Write-host "completed"
   }
 }
-
 
 function Run-Transfer ($src, $dstBase, $type, $sourcename) {
     Write-Host "--- ($($sourcename)) $type Speed (5 Loops) ---" -ForegroundColor Yellow
@@ -101,15 +111,6 @@ function Run-Transfer ($src, $dstBase, $type, $sourcename) {
         }
     }
 }
-
-# 2. Select Destination Disk from List
-$disks = Get-PSDrive -PSProvider FileSystem | Where-Object {$_.Name -ne "C" -and $_.Free -ne $null }
-Write-Host "`n--- Select Destination Disk (Input Number) ---" -ForegroundColor Cyan
-for ($i=0; $i -lt $disks.Count; $i++) { 
-    Write-Host "[$i] $($disks[$i].Name): ($($disks[$i].Root))" 
-}
-$choice = Read-Host "Enter number"
-$destDisk = "$($disks[[int]$choice].Name):\"
 
 $global:lastTarget=@()
 # Setup CSV Logging
