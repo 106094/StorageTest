@@ -12,11 +12,12 @@
 5. Review Results: Once finished, a CSV named WriteReadLog_YYYYMMDD_HHmm.csv will be created in the same folder as the script.
 📊 CSV Log Format
 The log is structured for easy import into Excel:
- Source	   Metric	        Result
- FolderName	time (Write 1)	12.45 s
- FolderName	speed (Write 1)	105.2 MB/s
- FolderName	time (Read 1)	10.12 s
- ...	...	...
+Source,Metric,Result
+[Project_Alpha,time (Write 1),10.5 s]
+[Project_Alpha,speed (Write 1),95.24 MB/s]
+[Project_Alpha,time (Read 1),8.2 s]
+[Project_Alpha,speed (Read 1),121.95 MB/s]
+[ ...,	...,	...]
 ## Mac
 1. Open terminal and cd to tool path
 2. sed -i '' 's/\r$//' ./transfer_tool.sh
