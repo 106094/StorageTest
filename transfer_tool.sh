@@ -1,19 +1,7 @@
 #!/bin/bash
 unalias rm 2>/dev/null
 
-# 1. Cross-Platform Folder Picker
-if [[ "$OSTYPE" == "darwin"* ]]; then
-    sourcePath=$(osascript -e 'POSIX path of (choose folder with prompt "Select Source Folder")')
-elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
-    if command -v zenity &> /dev/null; then
-        sourcePath=$(zenity --file-selection --directory --title="Select Source Folder")
-    else
-        read -p "Enter source folder path: " sourcePath
-    fi
-fi
-[[ -z "$sourcePath" ]] && exit 1
-
-# 2. Select Destination Disk
+# 1. Select Destination Disk
 echo -e "\n--- Available External Disks ---"
 if [[ "$OSTYPE" == "darwin"* ]]; then
     volumes=($(find /Volumes -maxdepth 1 -mindepth 1 -type d ! -name "Macintosh HD" | grep -Ff <(smbutil statshares -a | awk '/^[A-Za-z]/ && !/SHARE/ && !/===/ {print $1}')))
@@ -47,12 +35,37 @@ for name in "@Recycle" "#recycle" "#Recycle" "@recycle" "Network Trash Folder"; 
 done
 [[ -n "$recycleName" ]] && echo "Detected Recycle Bin: $recycleName"
 
-# Setup CSV
-csvLog="./copying_$(date +%Y%m%d_%H%M).csv"
-echo "Metric,Result" > "$csvLog"
+# 2. Multi-Folder Picker in a Loop
+sources=()
+while true; do
+if [[ "$OSTYPE" == "darwin"* ]]; then
+    path=$(osascript -e 'POSIX path of (choose folder with prompt "Select Source Folder")')
+elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
+    if command -v zenity &> /dev/null; then
+        path=$(zenity --file-selection --directory --title="Select Source Folder")
+    else
+        read -p "Enter source folder path: " sourcePath
+    fi
+fi
+    [[ -z "$path" ]] && break
+    sources+=("$path")
+    # Ask to continue (Yes/No style)
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        res=$(osascript -e 'button returned of (display dialog "Add another folder?" buttons {"No", "Yes"} default button "Yes")')
+    else
+        zenity --question --text="Add another folder?" --ok-label="Yes" --cancel-label="No" 2>/dev/null
+        res=$([[ $? -eq 0 ]] && echo "Yes" || echo "No")
+    fi
+    [[ "$res" == "No" ]] && break
+done
 
+[[ ${#sources[@]} -eq 0 ]] && exit 1
+
+# Setup CSV
+csvLog="./WriteReadLog_$(date +%Y%m%d_%H%M).csv"
+echo "Source,Metric,Result" > "$csvLog"
 run_benchmark() {
-    local src=$1; local dstBase=$2; local mode=$3
+    local src=$1; local dstBase=$2; local mode=$3; local sName=$4
     echo -e "\n>>> STARTING $mode SPEED TEST PHASE <<<" >&2
     sizeMB=$(du -sm "$src" | cut -f1)
 
@@ -70,9 +83,9 @@ run_benchmark() {
         sec_fmt=$(printf "%.1f" $runtime)
         speed=$(echo "scale=2; $sizeMB / $runtime" | bc)
         
-        echo "time ($mode $i),${sec_fmt} s" >> "$csvLog"
-        echo "speed ($mode $i),${speed} MB/s" >> "$csvLog"
-        echo " DONE. Speed: ${speed} MB/s (${sec_fmt}s)" >&2
+        echo "$sName,time ($mode $i),$(printf "%.2f" $runtime) s" >> "$csvLog"
+        echo "$sName,speed ($mode $i),${speed} MB/s" >> "$csvLog"
+        echo " DONE: ${speed} MB/s" >&2
         
         if [[ $i -lt 5 ]]; then
             rm -rf "$targetDir"
@@ -95,27 +108,27 @@ run_benchmark() {
     done
 }
 
-# 4. Execute
-lastOnDisk=$(run_benchmark "$sourcePath" "$destDisk" "Write" | tail -n 1)
-lastOnSys=$(run_benchmark "$lastOnDisk" "/tmp" "Read" | tail -n 1)
-
-# Cleanup
-echo -e "\nCleaning up..."
-rm -rf "$lastOnDisk"
-rm -rf "$lastOnSys"
-
-# Final Recycle Bin Purge
-if [ -d "$destDisk/$recycleName" ]; then
-    echo -n "Performing final NAS Recycle Bin purge..."
-	{ rm -rf "$destDisk/$recycleName"/* "$destDisk/$recycleName"/.[^.]*; } 2>/dev/null
-    sleep 2
-    attempts=0     
-    while [ -n "$(ls -A "$destDisk/$recycleName" 2>/dev/null)" ] && [ $attempts -lt 5 ]; do
-        ((attempts++))
-        [[ $attempts -lt 5 ]] && sleep 2 && echo -n "." >&2
-	    { rm -rf "$destDisk/$recycleName"/* "$destDisk/$recycleName"/.[^.]*; } 2>/dev/null
-    done
-    echo " Ready." >&2
-fi
-
+# 4. Main Execution Loop
+for sourcePath in "${sources[@]}"; do
+    sourcename=$(basename "$sourcePath")
+    lastOnDisk=$(run_benchmark "$sourcePath" "$destDisk" "Write" "$sourcename" | tail -n 1)
+    lastOnSys=$(run_benchmark "$lastOnDisk" "/tmp" "Read" "$sourcename" | tail -n 1)
+    # Cleanup
+    echo -e "\nCleaning up..."
+    rm -rf "$lastOnDisk"
+    rm -rf "$lastOnSys"
+    # Final Recycle Bin Purge
+    if [ -d "$destDisk/$recycleName" ]; then
+	    echo -n "Performing final NAS Recycle Bin purge..."
+		{ rm -rf "$destDisk/$recycleName"/* "$destDisk/$recycleName"/.[^.]*; } 2>/dev/null
+	    sleep 2
+	    attempts=0     
+	    while [ -n "$(ls -A "$destDisk/$recycleName" 2>/dev/null)" ] && [ $attempts -lt 5 ]; do
+		((attempts++))
+		[[ $attempts -lt 5 ]] && sleep 2 && echo -n "." >&2
+		    { rm -rf "$destDisk/$recycleName"/* "$destDisk/$recycleName"/.[^.]*; } 2>/dev/null
+	    done
+	    echo " Ready." >&2
+     fi
+done
 echo -e "Done! Results: $csvLog"
