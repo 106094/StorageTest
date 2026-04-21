@@ -1,6 +1,6 @@
 Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy Bypass -Force
 
-$transcriptPath = Join-Path $PSScriptRoot "log-$(get-date -format "_yyMMdd-HHmm").txt"
+$transcriptPath = Join-Path $PSScriptRoot "log$(get-date -format "_yyMMdd-HHmm").txt"
 Start-Transcript -Path $transcriptPath -Append
 
 #region get ready fio tool
