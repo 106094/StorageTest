@@ -2,7 +2,42 @@
 Add-Type -AssemblyName System.Windows.Forms
 $transcriptPath = Join-Path $PSScriptRoot "log$(get-date -format "_yyMMdd-HHmm").txt"
 Start-Transcript -Path $transcriptPath -Append
+$TargetDiskNumber = 1
+try {
+$disk = Get-Disk -Number $TargetDiskNumber -ErrorAction Stop
+Write-Host "Checking Disk $TargetDiskNumber ($($disk.Model))..." -ForegroundColor Cyan
+Write-Host "Disk 1 type is: $drivetype" -ForegroundColor Cyan
+if ($disk.BusType -eq "USB" -or $disk.BusType -eq "SD") {
+ [System.Windows.Forms.MessageBox]::Show("CRITICAL ERROR: Disk $TargetDiskNumber is a removable device ($($disk.BusType)). Script aborted to prevent data loss.", "Safety Block", "OK", "Error")
+exit
+}
+Write-Host "Preparing disk attributes..." -ForegroundColor Yellow
+} catch {
+    [System.Windows.Forms.MessageBox]::Show("Disk 1 not found or access denied.", "Error", "OK", "Error")
+}
 
+$disk | Set-Disk -IsOffline $False
+$disk | Set-Disk -IsReadonly $False
+$disk | Set-Disk -IsOffline $True
+#final check
+$finalState = Get-Disk -Number $TargetDiskNumber
+    Write-Host "`n--- Disk $($TargetDiskNumber) Status Report ---"
+    Write-Host "Model: $($finalState.Model)"
+    Write-Host "Operational Status: $($finalState.OperationalStatus)" # Should be Offline
+    Write-Host "Read-Only: $($finalState.IsReadOnly)"              # Should be False
+    Write-Host "--------------------------"
+
+    if ($finalState.OperationalStatus -eq "Offline" -and $finalState.IsReadOnly -eq $False) {
+        Write-Host "SUCCESS: Disk $TargetDiskNumber is ready for VDBench." -ForegroundColor Green
+    } else {
+        Write-Host "FAILURE: Disk states are not correct. Please check manually." -ForegroundColor Red
+    }
+
+} catch {
+    [System.Windows.Forms.MessageBox]::Show("Error: Disk $TargetDiskNumber not found or Access Denied. Make sure to run as Administrator.", "Error", "OK", "HandledError")
+    exit
+}
+ 
 #region get ready fio tool
 if (-not (Get-Command fio -ErrorAction SilentlyContinue)) {
     Write-Host "fio not found. Starting quiet installation..." -ForegroundColor Yellow    
@@ -24,7 +59,6 @@ if (-not (Get-Command fio -ErrorAction SilentlyContinue)) {
             Write-Host "ERROR: Installation finished but 'fio' is still not recognized." -ForegroundColor Red
             Write-Host "Please restart PowerShell or manually add '$fioDefaultPath' to your PATH." -ForegroundColor Red
             # Notify before quitting
-            Add-Type -AssemblyName System.Windows.Forms
             [System.Windows.Forms.MessageBox]::Show("fio installation failed or path not recognized. Script will exit.", "Critical Error", "OK", "Error")
             exit
           } 
