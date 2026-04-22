@@ -1,4 +1,4 @@
-# How to Use - VDBench Test
+# How to Use - VDBench Test (include fio install, disk 1 check dsk 1 status is offline and readonly is disable)
 1. Right Click vdbench_2026.bat then click [run as administrator]
 2. It will popup a message with "The VDBench Test has completed successfully" after test completed.
 3. log saved in \VDBench\VDvench50407\Fill25* and Fill100* for 25% and 100% fill rate.
