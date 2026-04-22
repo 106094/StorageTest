@@ -8,16 +8,19 @@
 # How to Use - ReadWrite Test
 
 ## Windows
-1. Launch the Script: Right-click the .ps1 file and select Run with PowerShell.
-2. Select Destination: The console will list available drives. Enter the number corresponding to your target disk (e.g., your mapped NAS drive).
-3. Select Source Folders:
+1. in "This PC" of "File explorer", "Map net drive" to bind with the destination (NAS) drive.
+2. open powershell with adminstrator ane enter the command for trust policy.
+Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy Bypass -Force
+3. Launch the Script: Right-click the .ps1 file and select Run with PowerShell.
+4. Select Destination: The console will list available drives. Enter the number corresponding to your target disk (e.g., your mapped NAS drive).
+5. Select Source Folders:
 -A folder browser will appear. Select the folder you want to use as test data.
 -A prompt will ask "Any other folder need to be executed?". Click Yes to add more or No to begin testing.
-4. Automatic Testing:
+6. Automatic Testing:
 -Write Phase: The tool copies the folder to the destination 5 times.
 -Read Phase: The tool copies the data back to the local source directory 5 times.
 -Cleanup: Temporary test folders are deleted automatically after the test.
-5. Review Results: Once finished, a CSV named WriteReadLog_YYYYMMDD_HHmm.csv will be created in the same folder as the script.
+7. Review Results: Once finished, a CSV named WriteReadLog_YYYYMMDD_HHmm.csv will be created in the same folder as the script.
 
 ## Mac
 1. Open terminal and cd to tool path
