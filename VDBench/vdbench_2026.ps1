@@ -5,12 +5,14 @@ Start-Transcript -Path $transcriptPath -Append
 $TargetDiskNumber = 1
 try {
 $disk = Get-Disk -Number $TargetDiskNumber -ErrorAction Stop
+$drivetype = $disk.BusType
 Write-Host "Checking Disk $TargetDiskNumber ($($disk.Model))..." -ForegroundColor Cyan
-Write-Host "Disk 1 type is: $drivetype" -ForegroundColor Cyan
-if ($disk.BusType -eq "USB" -or $disk.BusType -eq "SD") {
- [System.Windows.Forms.MessageBox]::Show("CRITICAL ERROR: Disk $TargetDiskNumber is a removable device ($($disk.BusType)). Script aborted to prevent data loss.", "Safety Block", "OK", "Error")
-exit
-}
+Write-Host "Disk $TargetDiskNumber type is: $drivetype" -ForegroundColor Cyan
+ if ($drivetype -eq "USB" -or $drivetype -eq "SD") {
+        [System.Windows.Forms.MessageBox]::Show("CRITICAL ERROR: Disk $TargetDiskNumber is a removable device ($drivetype). Script aborted to prevent data loss.", "Safety Block", "OK", "Error")
+        Stop-Transcript
+        exit
+    }
 Write-Host "Preparing disk attributes..." -ForegroundColor Yellow
 $disk | Set-Disk -IsOffline $False
 $disk | Set-Disk -IsReadonly $False
@@ -28,7 +30,6 @@ $finalState = Get-Disk -Number $TargetDiskNumber
     } else {
         Write-Host "FAILURE: Disk states are not correct. Please check manually." -ForegroundColor Red
     }
-
 } 
 catch {
     [System.Windows.Forms.MessageBox]::Show("Error: Disk $TargetDiskNumber not found or Access Denied. Make sure to run as Administrator.", "Error", "OK", "HandledError")
