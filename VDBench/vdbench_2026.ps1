@@ -40,11 +40,9 @@ if (-not (Get-Command fio -ErrorAction SilentlyContinue)) {
 }
 #endregion
 
-start-sleep -s 600
-
 $root=(get-childitem -Directory "$PSScriptRoot/vdbench*").FullName
 set-location $root
-$loop=5
+$loop=1
 $fills=@("25","100")
 foreach($fill in $fills){
 fio.exe --filename=\\.\PhysicalDrive1 --direct=1 --rw=write --bs=128k --iodepth=32 --randrepeat=0 --thread --name=128k_writefull --numjobs=1 --description="128k_writefull" --group_reporting "--size=$($fill)%" --output="write$($fill)%.txt"
