@@ -12,10 +12,6 @@ if ($disk.BusType -eq "USB" -or $disk.BusType -eq "SD") {
 exit
 }
 Write-Host "Preparing disk attributes..." -ForegroundColor Yellow
-} catch {
-    [System.Windows.Forms.MessageBox]::Show("Disk 1 not found or access denied.", "Error", "OK", "Error")
-}
-
 $disk | Set-Disk -IsOffline $False
 $disk | Set-Disk -IsReadonly $False
 $disk | Set-Disk -IsOffline $True
@@ -33,7 +29,8 @@ $finalState = Get-Disk -Number $TargetDiskNumber
         Write-Host "FAILURE: Disk states are not correct. Please check manually." -ForegroundColor Red
     }
 
-} catch {
+} 
+catch {
     [System.Windows.Forms.MessageBox]::Show("Error: Disk $TargetDiskNumber not found or Access Denied. Make sure to run as Administrator.", "Error", "OK", "HandledError")
     exit
 }
