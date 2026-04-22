@@ -1,5 +1,5 @@
-Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy Bypass -Force
-
+﻿Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy Bypass -Force
+Add-Type -AssemblyName System.Windows.Forms
 $transcriptPath = Join-Path $PSScriptRoot "log$(get-date -format "_yyMMdd-HHmm").txt"
 Start-Transcript -Path $transcriptPath -Append
 
@@ -37,6 +37,24 @@ if (-not (Get-Command fio -ErrorAction SilentlyContinue)) {
         Write-Error "Installer not found at $installerPath. Please check the filename."
         exit
     }
+}
+#endregion
+#region unzip vdbench folder
+$vdpath=Get-ChildItem  -Directory "$PSScriptRoot\vdbench*"
+if(!$vdpath){
+$vdbenchzip=Get-ChildItem "$PSScriptRoot\vdbench*zip"
+if($vdbenchzip){
+Expand-Archive -Path $vdbenchzip.FullName -DestinationPath "$PSScriptRoot\VDbench50407" -Force
+while(!$vdpath){
+$vdpath=Get-ChildItem "$PSScriptRoot\vdbench*\vdbench.bat"
+start-sleep -s 1
+}
+start-sleep -s 1
+Write-Output "VDBench tool folder unzip completed"
+}else{
+[System.Windows.Forms.MessageBox]::Show("No VDBench tool zip file found, please check", "Test Finished", "OK", "Warning")
+exit
+}
 }
 #endregion
 
@@ -82,6 +100,6 @@ if ($resultfolders) {
 Stop-Transcript
 
 # Load the assembly for the popup
-Add-Type -AssemblyName System.Windows.Forms
+
 [System.Windows.Forms.MessageBox]::Show("The VDBench test has completed successfully.", "Test Finished", "OK", "Information")
 
