@@ -33,6 +33,7 @@ $finalState = Get-Disk -Number $TargetDiskNumber
 } 
 catch {
     [System.Windows.Forms.MessageBox]::Show("Error: Disk $TargetDiskNumber not found or Access Denied. Make sure to run as Administrator.", "Error", "OK", "HandledError")
+     Stop-Transcript
     exit
 }
  
@@ -67,6 +68,7 @@ if (-not (Get-Command fio -ErrorAction SilentlyContinue)) {
     } 
     else{
         Write-Error "Installer not found at $installerPath. Please check the filename."
+         Stop-Transcript
         exit
     }
 }
@@ -85,6 +87,7 @@ start-sleep -s 1
 Write-Output "VDBench tool folder unzip completed"
 }else{
 [System.Windows.Forms.MessageBox]::Show("No VDBench tool zip file found, please check", "Test Finished", "OK", "Warning")
+ Stop-Transcript
 exit
 }
 }
