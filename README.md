@@ -2,6 +2,7 @@
 1. Right Click vdbench_2026.bat then click [run as administrator]
 2. It will popup a message with "The VDBench Test has completed successfully" after test completed.
 3. log saved in \VDBench\VDvench50407\Fill25* and Fill100* for 25% and 100% fill rate.
+4. Run the data analyzing with "Storage0729_v0.4_Array.exe"
 
 # How to Use - ReadWrite Test
 
