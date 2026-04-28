@@ -118,11 +118,13 @@ run_benchmark() {
 for sourcePath in "${sources[@]}"; do
     sourcename=$(basename "$sourcePath")
     lastOnDisk=$(run_benchmark "$sourcePath" "$destDisk" "Write" "$sourcename" | tail -n 1)
+    rm -rf "$sourcePath" 2>/dev/null
     lastOnSys=$(run_benchmark "$lastOnDisk" "/tmp" "Read" "$sourcename" | tail -n 1)
-    # Cleanup
+    echo "Recovering: Moving $lastOnSys back to $sourcePath"
+    mv "$lastOnDisk" "$sourcePath"
     echo -e "\nCleaning up..."
     rm -rf "$lastOnDisk"
-    rm -rf "$lastOnSys"
+
     # Final Recycle Bin Purge
     if [ -d "$destDisk/$recycleName" ]; then
 	    echo -n "Performing final NAS Recycle Bin purge..."
