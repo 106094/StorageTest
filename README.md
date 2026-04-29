@@ -33,7 +33,7 @@ Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy Bypass -Force
     - Pick your source folder when the dialog appears.
     - Choose Yes when asked "Add another folder?" to queue more tests, or No to start.
 7. Review Results: A file named WriteReadLog_YYYYMMDD_HHmm.csv will be generated in the script's directory. \
-[Notice] If not found NAS in /Volumes/, Command+K in Finder, then input "smb:\\[NAS IP]", it will mount to /Volumes/ again.
+[Notice] If not found NAS in /Volumes/, Command+K in Finder, then input "smb:\\\\[NAS IP]", it will mount to /Volumes/ again.
 
 ## Linux
 1. Open terminal and cd to tool path
