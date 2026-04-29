@@ -1,4 +1,4 @@
-﻿Add-Type -AssemblyName PresentationFramework
+Add-Type -AssemblyName PresentationFramework
 Add-Type -AssemblyName PresentationCore
 Add-Type -AssemblyName WindowsBase
 Add-Type -AssemblyName System.Windows.Forms
@@ -100,7 +100,7 @@ $folderPath = $script:folderPath
 $keepRows   = if ($script:isHDD) { 46 } else { 23 }
 
 # ── find log (exactly one) ───────────────────────────────
-$logFiles = Get-ChildItem -Path $folderPath -Recurse -Filter "hammerdb.log"
+$logFiles = Get-ChildItem -Path $folderPath -Recurse -Filter "hammerdb*.log"|Sort-Object LastWriteTime|Select-Object -Last 1
 
 if ($logFiles.Count -eq 0) {
     [System.Windows.MessageBox]::Show(
@@ -108,6 +108,7 @@ if ($logFiles.Count -eq 0) {
         "Not found", "OK", "Warning") | Out-Null
     exit
 }
+<#
 if ($logFiles.Count -gt 1) {
     $list = $logFiles.FullName -join "`n"
     [System.Windows.MessageBox]::Show(
@@ -115,6 +116,7 @@ if ($logFiles.Count -gt 1) {
         "Ambiguous", "OK", "Warning") | Out-Null
     exit
 }
+#>
 
 # ── parse full log ───────────────────────────────────────
 $logFile     = $logFiles[0]
@@ -123,7 +125,7 @@ $results     = [System.Collections.Generic.List[PSCustomObject]]::new()
 $activeCount = $null
 
 foreach ($line in $lines) {
-    if ($line -match 'Vuser\s+\d+:(\d+)\s+Active Virtual Users') {
+    if ($line -match 'Vuser\s+\d+:(\d+)\s+Active Virtual Users configured') {
         $activeCount = $Matches[1]
     }
     if ($line -match 'Vuser\s+\d+:TEST RESULT.*?(\d+)\s+NOPM from\s+(\d+)\s+SQL') {
