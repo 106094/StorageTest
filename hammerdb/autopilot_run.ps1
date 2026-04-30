@@ -1,5 +1,11 @@
 # autopilot_test.ps1
 Add-Type -AssemblyName System.Windows.Forms
+
+$LogStamp     = Get-Date -Format "yyyyMMdd_HHmmss"
+$TranscriptLog= "$env:USERPROFILE\Desktop\hammerdbSetup_${LogStamp}.log"
+
+Start-Transcript -Path $TranscriptLog -Append
+
 #region ── iSCSI Connection Setup ────────────────────────────────────────────────────
 
 function Connect-IscsiNAS {
@@ -305,6 +311,70 @@ if ($allMatch) {
 }
 #endregion
 
+#region import data to sql server
+# ── Attach tpcc database to SQL Server ───────────────────────────────────────
+Write-Host ""
+Write-Host "Attaching tpcc database to SQL Server..." -ForegroundColor Cyan
+$mdfFile = Get-ChildItem "D:\DATA" -Filter "*.mdf" | Select-Object -First 1
+$ldfFile = Get-ChildItem "D:\DATA" -Filter "*.ldf" | Select-Object -First 1
+if (-not $mdfFile) {
+    Write-Host "ERROR: No .mdf file found in D:\DATA" -ForegroundColor Red
+    exit 1
+}
+if (-not $ldfFile) {
+    Write-Host "WARNING: No .ldf file found — will rebuild log." -ForegroundColor Yellow
+}
+$dbExists = sqlcmd -S $SqlInstance -E -Q "
+SET NOCOUNT ON
+SELECT COUNT(*) FROM sys.databases WHERE name = '$DbName'" 2>&1 |
+    Where-Object { $_ -match '^\s*\d+\s*$' } |
+    ForEach-Object { $_.Trim() }
+if ($dbExists -eq "1") {
+    Write-Host "Database '$DbName' already attached — skipping." -ForegroundColor Green
+
+} else {
+    if ($ldfFile) {
+        $attachSql = "
+CREATE DATABASE [$DbName] ON
+    (FILENAME = '$($mdfFile.FullName)')
+LOG ON
+    (FILENAME = '$($ldfFile.FullName)')
+FOR ATTACH"
+    } else {
+        $attachSql = "
+CREATE DATABASE [$DbName] ON
+    (FILENAME = '$($mdfFile.FullName)')
+FOR ATTACH_REBUILD_LOG"
+    }
+    $attachResult = sqlcmd -S $SqlInstance -E -Q $attachSql 2>&1
+        if ($attachResult -match "Error|error|failed|Failed") {
+        Write-Host "ERROR: Attach failed." -ForegroundColor Red
+        Write-Host $attachResult -ForegroundColor Red
+        exit 1
+    }
+     # ── Verify attach ─────────────────────────────────────────────────────────
+    $state = sqlcmd -S $SqlInstance -E -Q "
+    SET NOCOUNT ON
+    SELECT state_desc FROM sys.databases WHERE name = '$DbName'" 2>&1 |
+        Where-Object { $_ -match '[A-Z]' -and $_ -notmatch 'state_desc|---' } |
+        ForEach-Object { $_.Trim() }
+    if ($state -ne "ONLINE") {
+        Write-Host "ERROR: Database state is '$state' after attach." -ForegroundColor Red
+        exit 1
+    }
+    Write-Host "Database '$DbName' attached and ONLINE." -ForegroundColor Green
+}
+# ── Verify warehouse count ────────────────────────────────────────────────────
+$whCount = sqlcmd -S $SqlInstance -E -Q "
+SET NOCOUNT ON
+SELECT COUNT(*) FROM $DbName.dbo.warehouse" 2>&1 |
+    Where-Object { $_ -match '^\s*\d+\s*$' } |
+    ForEach-Object { $_.Trim() }
+Write-Host "Warehouse count : $whCount" -ForegroundColor Green
+Write-Host "Database ready for HammerDB testing." -ForegroundColor Green
+#endregion
+Stop-Transcript
+
 #region HammerDB Testing
 $SqlInstance  = "localhost\TPCC"
 $DbName       = "tpcc"
@@ -314,8 +384,6 @@ $HammerDBHome = "C:\Program Files\HammerDB-4.8"
 $TclScript    = "./scripts/tcl/mssqls/tprocc/mssqls_tprocc_run_vu.tcl"
 $LogStamp     = Get-Date -Format "yyyyMMdd_HHmmss"
 $OurLog       = "$env:USERPROFILE\Desktop\hammerdb_${LogStamp}.log"
-
-# ── Functions — ALL defined at top before any code runs ──────────────────────
 
 function Write-Log {
     param([string]$Message, [string]$Level = "INFO")
@@ -373,7 +441,6 @@ function Run-HammerDB {
     Write-Plain "--- HammerDB output end VU $VU ---"
     return @{ ExitCode = $exit; SleepSec = $timing.SleepSec }
 }
-
 
 # ── Step 1: Check if tpcc database exists ────────────────────────────────────
 Write-Log "Checking if database '$DbName' exists on $SqlInstance..."
