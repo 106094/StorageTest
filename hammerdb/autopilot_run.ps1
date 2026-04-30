@@ -244,8 +244,65 @@ Get-Volume -DriveLetter "D" |
 #endregion
 
 #region copy DB
+# ── Search all drives for \DATA folder ───────────────────────────────────────
+$drives = Get-PSDrive -PSProvider FileSystem |
+    Where-Object { $_.Root -match '^[A-Z]:\\$' } |
+    Select-Object -ExpandProperty Name
 
+$foundData = $null
 
+foreach ($drive in $drives) {
+    $candidate = "${drive}:\DATA"
+    if (Test-Path $candidate) {
+        Write-Host "Found \DATA folder at : $candidate" -ForegroundColor Green
+        $foundData = $candidate
+        break
+    }
+}
+
+if (-not $foundData) {
+    Write-Host "WARNING: No \DATA folder found on any drive." -ForegroundColor Yellow
+    exit
+}
+
+Write-Host "Copying $foundData to D:\DATA ..." -ForegroundColor Cyan
+Copy-Item -Path $foundData -Destination "D:\" -Recurse -Force
+Write-Host "Copy complete." -ForegroundColor Green
+
+# ── Verify copy integrity ─────────────────────────────────────────────────────
+Write-Host ""
+Write-Host "Verifying copy integrity..." -ForegroundColor Cyan
+$allMatch = $true
+$sourceFiles = Get-ChildItem -Path $foundData -Recurse -File
+foreach ($srcFile in $sourceFiles) {
+    $relativePath = $srcFile.FullName.Substring($foundData.Length)
+    $destFile     = "D:\DATA$relativePath"
+    if (-not (Test-Path $destFile)) {
+        Write-Host "MISSING  : $relativePath" -ForegroundColor Red
+        $allMatch = $false
+        continue
+    }
+    $dest = Get-Item $destFile
+    $sizeMatch = $srcFile.Length -eq $dest.Length
+    $srcHash  = (Get-FileHash -Path $srcFile.FullName  -Algorithm SHA256).Hash
+    $destHash = (Get-FileHash -Path $destFile           -Algorithm SHA256).Hash
+    $hashMatch = $srcHash -eq $destHash
+    $status = if ($sizeMatch -and $hashMatch) { "OK" } else { "FAIL" }
+    $color  = if ($sizeMatch -and $hashMatch) { "Green" } else { "Red" }
+    Write-Host "$status  $relativePath" -ForegroundColor $color
+    Write-Host "     Size   : $($srcFile.Length) bytes  →  $($dest.Length) bytes  $(if ($sizeMatch) {'✓'} else {'✗ MISMATCH'})"
+    Write-Host "     SHA256 : $(if ($hashMatch) {'✓ Match'} else {'✗ MISMATCH'})"
+    if (-not $sizeMatch -or -not $hashMatch) { $allMatch = $false }
+}
+
+# ── Summary ───────────────────────────────────────────────────────────────────
+Write-Host ""
+if ($allMatch) {
+    Write-Host "All files verified — copy integrity confirmed." -ForegroundColor Green
+} else {
+    Write-Host "ERROR: One or more files failed verification — copy may be corrupted." -ForegroundColor Red
+    exit 1
+}
 #endregion
 
 #region HammerDB Testing
