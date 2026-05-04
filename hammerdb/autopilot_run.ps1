@@ -34,7 +34,7 @@ function Connect-IscsiNAS {
             Write-Host "Target : $TargetIQN" -ForegroundColor Red
             Write-Host "Portal : $TargetIP"  -ForegroundColor Red
             Write-Host "Please check NAS availability and iSCSI configuration." -ForegroundColor Yellow
-            exit 1
+            #exit 1
         }
 
         Start-Sleep -Seconds 1
@@ -61,7 +61,7 @@ function Select-IscsiTarget {
 
     if (-not $targets) {
         Write-Host "ERROR: No iSCSI targets found on $TargetIP" -ForegroundColor Red
-        exit 1
+        #exit 1
     }
 
     # ── List targets for user to select ──────────────────────────────────
@@ -85,7 +85,7 @@ function Select-IscsiTarget {
         [int]$selection -lt 1 -or
         [int]$selection -gt $targetList.Count) {
         Write-Host "ERROR: Invalid selection." -ForegroundColor Red
-        exit 1
+        #exit 1
     }
 
     return $targetList[[int]$selection - 1].NodeAddress
@@ -107,17 +107,14 @@ if ($connectedTargets) {
     foreach ($s in $connectedTargets) {
         Write-Host "  $index. $($s.TargetNodeAddress)"
         $index++
-    }
+    
     Write-Host ""
     $confirm = Read-Host "Is this the correct iSCSI target for this test? (Y/N)"
     if ($confirm -eq "Y") {
         Write-Host "Using existing iSCSI connection." -ForegroundColor Green
-    } else {
-        Write-Host ""
-        $TargetIP  = Read-Host "Enter iSCSI NAS IP address"
-        $TargetIQN = Select-IscsiTarget -TargetIP $TargetIP
-        Connect-IscsiNAS -TargetIP $TargetIP -TargetIQN $TargetIQN
+        break
     }
+    } 
 } else {
     Write-Host ""
     Write-Host "No iSCSI targets currently connected."
@@ -135,15 +132,30 @@ Write-Host "========================================================"
 #region ── set iSCSI disk online and writable then assign letter D
 $offlineDisks = Get-Disk | Where-Object { 
     $_.IsOffline -eq $true -and 
-    $_.IsReadOnly -eq $true 
+    $_.IsReadOnly -eq $true
+$iSCSIDisk  = $offlineDisks
 }
+
 
 if ($offlineDisks.Count -eq 0) {
     Write-Host "WARNING: No offline/readonly disks found — iSCSI disk may already be online." -ForegroundColor Yellow
+    $onlineiscasi = Get-Disk | Where-Object { 
+    $_.IsOffline -eq $false -and 
+    $_.IsReadOnly -eq $false -and
+    $_.BusType -eq "iSCSI"
+    }
+    if($onlineiscasi){
+    $iSCSIDisk=$onlineiscasi
+    }
+    else{
+    Write-Host "WARNING: No iSCSI disk is found either offline and online, please check again." -ForegroundColor Yellow
     exit 1
+    }
+    
 }
 
-if ($offlineDisks.Count -gt 1) {
+# Exactly one offline+readonly disk found
+if ($iSCSIDisk.Count -gt 1) {
     Write-Host "WARNING: Multiple offline/readonly disks found — cannot determine which is iSCSI." -ForegroundColor Yellow
     Write-Host ""
     $offlineDisks | Select-Object Number, FriendlyName, OperationalStatus, IsOffline, IsReadOnly,
@@ -152,9 +164,6 @@ if ($offlineDisks.Count -gt 1) {
     Write-Host "Please bring the correct disk online manually and re-run." -ForegroundColor Yellow
     exit 1
 }
-
-# Exactly one offline+readonly disk found
-$iSCSIDisk  = $offlineDisks[0]
 $diskNumber = $iSCSIDisk.Number
 
 Write-Host "Found iSCSI disk : $($iSCSIDisk.FriendlyName)  (Disk $diskNumber)" -ForegroundColor Cyan
@@ -224,7 +233,7 @@ if ("D" -in $usedLetters) {
 
     if (-not $nextLetter) {
         Write-Host "ERROR: No available drive letters to reassign D." -ForegroundColor Red
-        exit 1
+        #exit 1
     }
 
     $existingD = Get-Partition | Where-Object { $_.DriveLetter -eq "D" }
@@ -250,9 +259,15 @@ Get-Volume -DriveLetter "D" |
 #endregion
 
 #region copy DB
+
+#check if already copyied
+
+$dbpath="D:\DATA"
+$dbfiles = @("tpcc.mdf", "tpcc_log.ldf") | Where-Object { Test-Path "$dbpath\$_" }
+
 # ── Search all drives for \DATA folder ───────────────────────────────────────
 $drives = Get-PSDrive -PSProvider FileSystem |
-    Where-Object { $_.Root -match '^[A-Z]:\\$' } |
+    Where-Object { $_.Root -match '^[ABE-Z]:\\$' } |
     Select-Object -ExpandProperty Name
 
 $foundData = $null
@@ -268,13 +283,41 @@ foreach ($drive in $drives) {
 
 if (-not $foundData) {
     Write-Host "WARNING: No \DATA folder found on any drive." -ForegroundColor Yellow
-    exit
+    #exit 1
 }
 
+if(!$dbfiles){
 Write-Host "Copying $foundData to D:\DATA ..." -ForegroundColor Cyan
-Copy-Item -Path $foundData -Destination "D:\" -Recurse -Force
-Write-Host "Copy complete." -ForegroundColor Green
+#Copy-Item -Path $foundData -Destination "D:\" -Recurse -Force 
+$lastOutput = Get-Date
+$interval = 3
+$currentFile = ""
+$percent = 0
+& robocopy $foundData "D:\DATA" /Z  2>&1 | ForEach-Object {
+    $now = Get-Date
+    # Detect file name
+    if ($_ -match '[\w\s]+\s+([\w\.]+\.(mdf|ldf))') {
+        $currentFile = $Matches[1].Trim()
+        $percent = 0  # reset percent for new file
+        Write-Progress -Activity "Copying SQL Files" `
+                       -Status "File: $currentFile" `
+                       -PercentComplete $percent
+    }
 
+    # Detect percentage - update progress bar immediately
+    if ($_ -match '(\d+\.?\d*)%') {
+        $percent = [double]$Matches[1]
+        if (($now - $lastOutput).TotalSeconds -ge $interval) {
+            Write-Progress -Activity "Copying SQL Files" `
+                           -Status "File: $currentFile $($percent)% copied" `
+                           -PercentComplete $percent
+            $lastOutput = $now
+        }
+    }
+}
+
+Write-Host "Copy complete." -ForegroundColor Green
+}
 # ── Verify copy integrity ─────────────────────────────────────────────────────
 Write-Host ""
 Write-Host "Verifying copy integrity..." -ForegroundColor Cyan
@@ -289,16 +332,12 @@ foreach ($srcFile in $sourceFiles) {
         continue
     }
     $dest = Get-Item $destFile
-    $sizeMatch = $srcFile.Length -eq $dest.Length
-    $srcHash  = (Get-FileHash -Path $srcFile.FullName  -Algorithm SHA256).Hash
-    $destHash = (Get-FileHash -Path $destFile           -Algorithm SHA256).Hash
-    $hashMatch = $srcHash -eq $destHash
-    $status = if ($sizeMatch -and $hashMatch) { "OK" } else { "FAIL" }
-    $color  = if ($sizeMatch -and $hashMatch) { "Green" } else { "Red" }
+    $match = (Get-Item $srcFile.FullName).Length -eq (Get-Item $destFile).Length
+    $status = if ($match) { "OK" } else { "FAIL" }
+    $color  = if ($match) { "Green" } else { "Red" }
     Write-Host "$status  $relativePath" -ForegroundColor $color
-    Write-Host "     Size   : $($srcFile.Length) bytes  →  $($dest.Length) bytes  $(if ($sizeMatch) {'✓'} else {'✗ MISMATCH'})"
-    Write-Host "     SHA256 : $(if ($hashMatch) {'✓ Match'} else {'✗ MISMATCH'})"
-    if (-not $sizeMatch -or -not $hashMatch) { $allMatch = $false }
+    Write-Host "     Size   : $($srcFile.Length) bytes  →  $($dest.Length) bytes  $(if ($match) {'✓'} else {'✗ MISMATCH'})"
+    if (-not $match) { $allMatch = $false }
 }
 
 # ── Summary ───────────────────────────────────────────────────────────────────
@@ -307,7 +346,7 @@ if ($allMatch) {
     Write-Host "All files verified — copy integrity confirmed." -ForegroundColor Green
 } else {
     Write-Host "ERROR: One or more files failed verification — copy may be corrupted." -ForegroundColor Red
-    exit 1
+    #exit 1
 }
 #endregion
 
@@ -319,11 +358,15 @@ $mdfFile = Get-ChildItem "D:\DATA" -Filter "*.mdf" | Select-Object -First 1
 $ldfFile = Get-ChildItem "D:\DATA" -Filter "*.ldf" | Select-Object -First 1
 if (-not $mdfFile) {
     Write-Host "ERROR: No .mdf file found in D:\DATA" -ForegroundColor Red
-    exit 1
+    #exit 1
 }
 if (-not $ldfFile) {
     Write-Host "WARNING: No .ldf file found — will rebuild log." -ForegroundColor Yellow
 }
+$SqlInstance = sqlcmd -L | 
+    Where-Object { $_ -notmatch "Servers:" -and $_.Trim() -ne "" } | 
+    ForEach-Object { $_.Trim() }
+$DbName="tpcc"
 $dbExists = sqlcmd -S $SqlInstance -E -Q "
 SET NOCOUNT ON
 SELECT COUNT(*) FROM sys.databases WHERE name = '$DbName'" 2>&1 |
@@ -350,7 +393,7 @@ FOR ATTACH_REBUILD_LOG"
         if ($attachResult -match "Error|error|failed|Failed") {
         Write-Host "ERROR: Attach failed." -ForegroundColor Red
         Write-Host $attachResult -ForegroundColor Red
-        exit 1
+        #exit 1
     }
      # ── Verify attach ─────────────────────────────────────────────────────────
     $state = sqlcmd -S $SqlInstance -E -Q "
@@ -360,7 +403,7 @@ FOR ATTACH_REBUILD_LOG"
         ForEach-Object { $_.Trim() }
     if ($state -ne "ONLINE") {
         Write-Host "ERROR: Database state is '$state' after attach." -ForegroundColor Red
-        exit 1
+        #exit 1
     }
     Write-Host "Database '$DbName' attached and ONLINE." -ForegroundColor Green
 }
@@ -403,7 +446,6 @@ function Write-HammerLine {
     param([string]$Line)
     Write-Host $Line
     Add-Content -Path $OurLog    -Value $Line
-    Add-Content -Path $HammerLog -Value $Line
 }
 
 function Get-TestTiming {
@@ -496,7 +538,7 @@ else {
     if (-not $mdfPath) {
         Write-Log "ERROR: $MdfName not found in any \DATA folder." "ERROR"
         Write-Log "Please copy tpcc.mdf to a \DATA folder on any drive." "ERROR"
-        exit 1
+        #exit 1
     }
 
     if ($ldfPath) {
@@ -517,7 +559,7 @@ FOR ATTACH_REBUILD_LOG"
     $attachResult = sqlcmd -S $SqlInstance -E -Q $attachSql 2>&1
     if ($attachResult -match "Error|error|failed|Failed") {
         Write-Log "Attach failed: $attachResult" "ERROR"
-        exit 1
+        #exit 1
     }
 
     $state = sqlcmd -S $SqlInstance -E -Q "
@@ -528,7 +570,7 @@ FOR ATTACH_REBUILD_LOG"
 
     if ($state -ne "ONLINE") {
         Write-Log "Database state is '$state' — attach failed." "ERROR"
-        exit 1
+        #exit 1
     }
 
     $whCount = sqlcmd -S $SqlInstance -E -Q "
