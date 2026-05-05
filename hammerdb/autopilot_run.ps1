@@ -3,6 +3,8 @@ Add-Type -AssemblyName System.Windows.Forms
 
 $LogStamp     = Get-Date -Format "yyyyMMdd_HHmmss"
 $TranscriptLog= "$env:USERPROFILE\Desktop\hammerdbSetup_${LogStamp}.log"
+$DataPath    = "D:\DATA"
+$DbName      = "tpcc"
 
 Start-Transcript -Path $TranscriptLog -Append
 
@@ -34,7 +36,7 @@ function Connect-IscsiNAS {
             Write-Host "Target : $TargetIQN" -ForegroundColor Red
             Write-Host "Portal : $TargetIP"  -ForegroundColor Red
             Write-Host "Please check NAS availability and iSCSI configuration." -ForegroundColor Yellow
-            #exit 1
+            return $false
         }
 
         Start-Sleep -Seconds 1
@@ -46,25 +48,23 @@ function Connect-IscsiNAS {
     }
 
     Write-Host "Connected successfully." -ForegroundColor Green
+    return $true
 }
 
 function Select-IscsiTarget {
     param([string]$TargetIP)
 
-    # Discover targets on given IP
     Write-Host "Discovering targets on $TargetIP ..." -ForegroundColor Cyan
     New-IscsiTargetPortal -TargetPortalAddress $TargetIP -ErrorAction SilentlyContinue | Out-Null
     Start-Sleep -Seconds 2
 
-    # Get all targets on this portal
     $targets = Get-IscsiTarget | Where-Object { $_.NodeAddress -ne $null }
 
     if (-not $targets) {
         Write-Host "ERROR: No iSCSI targets found on $TargetIP" -ForegroundColor Red
-        #exit 1
+        return $null
     }
 
-    # ── List targets for user to select ──────────────────────────────────
     Write-Host ""
     Write-Host "Available iSCSI targets on $TargetIP :"
     Write-Host ""
@@ -85,7 +85,7 @@ function Select-IscsiTarget {
         [int]$selection -lt 1 -or
         [int]$selection -gt $targetList.Count) {
         Write-Host "ERROR: Invalid selection." -ForegroundColor Red
-        #exit 1
+        return $null
     }
 
     return $targetList[[int]$selection - 1].NodeAddress
@@ -98,33 +98,45 @@ Write-Host "iSCSI Connection Check"
 Write-Host "========================================================"
 
 $connectedTargets = Get-IscsiSession | Where-Object { $_.IsConnected -eq $true }
+$iscsiReady       = $false
 
 if ($connectedTargets) {
     Write-Host ""
     Write-Host "Currently connected iSCSI targets:"
     Write-Host ""
+
     $index = 1
     foreach ($s in $connectedTargets) {
         Write-Host "  $index. $($s.TargetNodeAddress)"
         $index++
-    
+    }
+
+    # ── Ask AFTER listing all targets (bug fix) ───────────────────────────
     Write-Host ""
     $confirm = Read-Host "Is this the correct iSCSI target for this test? (Y/N)"
     if ($confirm -eq "Y") {
         Write-Host "Using existing iSCSI connection." -ForegroundColor Green
-        break
+        $iscsiReady = $true
     }
-    } 
-} else {
-    Write-Host ""
-    Write-Host "No iSCSI targets currently connected."
-    $TargetIP  = Read-Host "Enter iSCSI NAS IP address"
-    $TargetIQN = Select-IscsiTarget -TargetIP $TargetIP
-    Connect-IscsiNAS -TargetIP $TargetIP -TargetIQN $TargetIQN
 }
 
-Write-Host ""
-Write-Host "iSCSI setup complete." -ForegroundColor Green
+if (-not $iscsiReady) {
+    Write-Host ""
+    Write-Host "No valid iSCSI target confirmed — connecting new target..." -ForegroundColor Yellow
+    $TargetIP  = Read-Host "Enter iSCSI NAS IP address"
+    $TargetIQN = Select-IscsiTarget -TargetIP $TargetIP
+    if ($TargetIQN) {
+        $iscsiReady = Connect-IscsiNAS -TargetIP $TargetIP -TargetIQN $TargetIQN
+    }
+}
+
+if ($iscsiReady) {
+    Write-Host ""
+    Write-Host "iSCSI setup complete." -ForegroundColor Green
+} else {
+    Write-Host ""
+    Write-Host "ERROR: iSCSI setup failed." -ForegroundColor Red
+}
 Write-Host "========================================================"
 
 #endregion
@@ -164,25 +176,25 @@ if ($iSCSIDisk.Count -gt 1) {
     Write-Host "Please bring the correct disk online manually and re-run." -ForegroundColor Yellow
     exit 1
 }
-$diskNumber = $iSCSIDisk.Number
+$script:diskNumber = $iSCSIDisk.Number
 
-Write-Host "Found iSCSI disk : $($iSCSIDisk.FriendlyName)  (Disk $diskNumber)" -ForegroundColor Cyan
+Write-Host "Found iSCSI disk : $($iSCSIDisk.FriendlyName)  (Disk $script:diskNumber)" -ForegroundColor Cyan
 Write-Host "Size             : $([math]::Round($iSCSIDisk.Size/1GB,1)) GB"      -ForegroundColor Cyan
 
-Set-Disk -Number $diskNumber -IsOffline $false
-Set-Disk -Number $diskNumber -IsReadOnly $false
-Write-Host "Disk $diskNumber is now online and writable." -ForegroundColor Green
+Set-Disk -Number $script:diskNumber -IsOffline $false
+Set-Disk -Number $script:diskNumber -IsReadOnly $false
+Write-Host "Disk $script:diskNumber is now online and writable." -ForegroundColor Green
 
-Update-Disk -Number $diskNumber
+Update-Disk -Number $script:diskNumber
 Start-Sleep -Seconds 2
 
-$disk = Get-Disk -Number $diskNumber
-Write-Host "Disk $diskNumber state : PartitionStyle=$($disk.PartitionStyle)  OperationalStatus=$($disk.OperationalStatus)" -ForegroundColor Cyan
+$disk = Get-Disk -Number $script:diskNumber
+Write-Host "Disk $script:diskNumber state : PartitionStyle=$($disk.PartitionStyle)  OperationalStatus=$($disk.OperationalStatus)" -ForegroundColor Cyan
 
 # ── Initialize if RAW ─────────────────────────────────────────────────────────
 if ($disk.PartitionStyle -eq "RAW") {
     Write-Host "Disk is uninitialized — initializing with GPT..." -ForegroundColor Yellow
-    Initialize-Disk -Number $diskNumber -PartitionStyle GPT
+    Initialize-Disk -Number $script:diskNumber -PartitionStyle GPT
     Start-Sleep -Seconds 2
     Write-Host "Disk initialized." -ForegroundColor Green
 } else {
@@ -190,11 +202,11 @@ if ($disk.PartitionStyle -eq "RAW") {
 }
 
 # ── Check if data partition already exists ────────────────────────────────────
-$partition = Get-Partition -DiskNumber $diskNumber -ErrorAction SilentlyContinue |
+$partition = Get-Partition -DiskNumber $script:diskNumber -ErrorAction SilentlyContinue |
     Where-Object { $_.Type -ne "Reserved" }
 if (-not $partition) {
     Write-Host "Creating data partition..." -ForegroundColor Cyan
-    $partition = New-Partition -DiskNumber $diskNumber -UseMaximumSize
+    $partition = New-Partition -DiskNumber $script:diskNumber -UseMaximumSize
     Start-Sleep -Seconds 2
     Write-Host "Partition created." -ForegroundColor Green
 } else {
@@ -214,7 +226,7 @@ if (-not $volume -or $volume.FileSystem -eq "" -or $volume.FileSystem -eq $null)
 }
 
 # ── Assign drive letter D to iSCSI disk ──────────────────────────────────────
-$partition = Get-Partition -DiskNumber $diskNumber |
+$partition = Get-Partition -DiskNumber $script:diskNumber |
     Where-Object { $_.Type -ne "Reserved" }
 
 # ── Assign drive letter D ─────────────────────────────────────────────────────
@@ -244,7 +256,7 @@ if ("D" -in $usedLetters) {
     Write-Host "Existing D reassigned to ${nextLetter}:\" -ForegroundColor Yellow
 }
 
-Set-Partition -DiskNumber $diskNumber `
+Set-Partition -DiskNumber $script:diskNumber `
               -PartitionNumber $partition.PartitionNumber `
               -NewDriveLetter "D"
 
@@ -315,7 +327,7 @@ $percent = 0
         }
     }
 }
-
+Write-Progress -Activity "Copying SQL Files" -Complete
 Write-Host "Copy complete." -ForegroundColor Green
 }
 # ── Verify copy integrity ─────────────────────────────────────────────────────
@@ -351,76 +363,129 @@ if ($allMatch) {
 #endregion
 
 #region import data to sql server
-# ── Attach tpcc database to SQL Server ───────────────────────────────────────
-Write-Host ""
-Write-Host "Attaching tpcc database to SQL Server..." -ForegroundColor Cyan
-$mdfFile = Get-ChildItem "D:\DATA" -Filter "*.mdf" | Select-Object -First 1
-$ldfFile = Get-ChildItem "D:\DATA" -Filter "*.ldf" | Select-Object -First 1
-if (-not $mdfFile) {
-    Write-Host "ERROR: No .mdf file found in D:\DATA" -ForegroundColor Red
-    #exit 1
-}
-if (-not $ldfFile) {
-    Write-Host "WARNING: No .ldf file found — will rebuild log." -ForegroundColor Yellow
-}
-$SqlInstance = sqlcmd -L | 
-    Where-Object { $_ -notmatch "Servers:" -and $_.Trim() -ne "" } | 
-    ForEach-Object { $_.Trim() }
-$DbName="tpcc"
-$dbExists = sqlcmd -S $SqlInstance -E -Q "
-SET NOCOUNT ON
-SELECT COUNT(*) FROM sys.databases WHERE name = '$DbName'" 2>&1 |
-    Where-Object { $_ -match '^\s*\d+\s*$' } |
-    ForEach-Object { $_.Trim() }
-if ($dbExists -eq "1") {
-    Write-Host "Database '$DbName' already attached — skipping." -ForegroundColor Green
+function Invoke-AttachTpccDatabase {
+    param (
+        [string]$DataPath    = $DataPath,
+        [string]$DbName      = $DbName
+    )
 
-} else {
-    if ($ldfFile) {
-        $attachSql = "
-CREATE DATABASE [$DbName] ON
-    (FILENAME = '$($mdfFile.FullName)')
-LOG ON
-    (FILENAME = '$($ldfFile.FullName)')
-FOR ATTACH"
-    } else {
-        $attachSql = "
-CREATE DATABASE [$DbName] ON
-    (FILENAME = '$($mdfFile.FullName)')
-FOR ATTACH_REBUILD_LOG"
+    # ── Find MDF / LDF files ──────────────────────────────────────────────────
+    Write-Host ""
+    Write-Host "Attaching tpcc database to SQL Server..." -ForegroundColor Cyan
+
+    $mdfFile = Get-ChildItem $DataPath -Filter "*.mdf" | Select-Object -First 1
+    $ldfFile = Get-ChildItem $DataPath -Filter "*.ldf" | Select-Object -First 1
+
+    if (-not $mdfFile) {
+        Write-Host "ERROR: No .mdf file found in $DataPath" -ForegroundColor Red
+        return $false
     }
-    $attachResult = sqlcmd -S $SqlInstance -E -Q $attachSql 2>&1
-        if ($attachResult -match "Error|error|failed|Failed") {
-        Write-Host "ERROR: Attach failed." -ForegroundColor Red
-        Write-Host $attachResult -ForegroundColor Red
-        #exit 1
+    if (-not $ldfFile) {
+        Write-Host "WARNING: No .ldf file found — will rebuild log." -ForegroundColor Yellow
     }
-     # ── Verify attach ─────────────────────────────────────────────────────────
-    $state = sqlcmd -S $SqlInstance -E -Q "
+
+    # ── Get SQL Instance ──────────────────────────────────────────────────────
+    $script:SqlInstance = sqlcmd -L |
+        Where-Object { $_ -notmatch "Servers:" -and $_.Trim() -ne "" } |
+        ForEach-Object { $_.Trim() }
+
+    if (-not $script:SqlInstance) {
+        Write-Host "ERROR: No SQL Server instance found." -ForegroundColor Red
+        return $false
+    }
+    Write-Host "SQL Instance : $script:SqlInstance" -ForegroundColor Cyan
+
+    # ── Check database state first ────────────────────────────────────────────
+    $state = sqlcmd -S $script:SqlInstance -E -Q "
     SET NOCOUNT ON
     SELECT state_desc FROM sys.databases WHERE name = '$DbName'" 2>&1 |
         Where-Object { $_ -match '[A-Z]' -and $_ -notmatch 'state_desc|---' } |
         ForEach-Object { $_.Trim() }
-    if ($state -ne "ONLINE") {
-        Write-Host "ERROR: Database state is '$state' after attach." -ForegroundColor Red
-        #exit 1
+
+    switch ($state) {
+        "ONLINE" {
+            Write-Host "Database '$DbName' already attached and ONLINE — skipping." -ForegroundColor Green
+        }
+        "RECOVERY_PENDING" {
+            Write-Host "Database '$DbName' is RECOVERY_PENDING — re-attaching..." -ForegroundColor Yellow
+            # Drop broken entry then re-attach
+            sqlcmd -S $script:SqlInstance -E -Q "
+            ALTER DATABASE [$DbName] SET OFFLINE WITH ROLLBACK IMMEDIATE;
+            DROP DATABASE [$DbName];" 2>&1 | Out-Null
+            if (-not (Invoke-AttachFiles -SqlInstance $script:SqlInstance -DbName $DbName -mdfFile $mdfFile -ldfFile $ldfFile)) { return $false }
+        }
+        "OFFLINE" {
+            Write-Host "Database '$DbName' is OFFLINE — bringing online..." -ForegroundColor Yellow
+            sqlcmd -S $script:SqlInstance -E -Q "ALTER DATABASE [$DbName] SET ONLINE;" 2>&1 | Out-Null
+        }
+        "SUSPECT" {
+            Write-Host "Database '$DbName' is SUSPECT — re-attaching..." -ForegroundColor Yellow
+            sqlcmd -S $script:SqlInstance -E -Q "DROP DATABASE [$DbName];" 2>&1 | Out-Null
+            if (-not (Invoke-AttachFiles -SqlInstance $script:SqlInstance -DbName $DbName -mdfFile $mdfFile -ldfFile $ldfFile)) { return $false }
+        }
+        default {
+            Write-Host "Database '$DbName' not found — attaching..." -ForegroundColor Cyan
+            if (-not (Invoke-AttachFiles -SqlInstance $script:SqlInstance -DbName $DbName -mdfFile $mdfFile -ldfFile $ldfFile)) { return $false }
+        }
+    }
+
+    # ── Final state verify ────────────────────────────────────────────────────
+    $finalState = sqlcmd -S $script:SqlInstance -E -Q "
+    SET NOCOUNT ON
+    SELECT state_desc FROM sys.databases WHERE name = '$DbName'" 2>&1 |
+        Where-Object { $_ -match '[A-Z]' -and $_ -notmatch 'state_desc|---' } |
+        ForEach-Object { $_.Trim() }
+
+    if ($finalState -ne "ONLINE") {
+        Write-Host "ERROR: Database state is '$finalState' after attach." -ForegroundColor Red
+        return $false
     }
     Write-Host "Database '$DbName' attached and ONLINE." -ForegroundColor Green
+
+    # ── Verify warehouse count ────────────────────────────────────────────────
+    $whCount = sqlcmd -S $script:SqlInstance -E -Q "
+    SET NOCOUNT ON
+    SELECT COUNT(*) FROM $DbName.dbo.warehouse" 2>&1 |
+        Where-Object { $_ -match '^\s*\d+\s*$' } |
+        ForEach-Object { $_.Trim() }
+
+    Write-Host "Warehouse count : $whCount" -ForegroundColor Green
+    Write-Host "Database ready for HammerDB testing." -ForegroundColor Green
+    return $true
 }
-# ── Verify warehouse count ────────────────────────────────────────────────────
-$whCount = sqlcmd -S $SqlInstance -E -Q "
-SET NOCOUNT ON
-SELECT COUNT(*) FROM $DbName.dbo.warehouse" 2>&1 |
-    Where-Object { $_ -match '^\s*\d+\s*$' } |
-    ForEach-Object { $_.Trim() }
-Write-Host "Warehouse count : $whCount" -ForegroundColor Green
-Write-Host "Database ready for HammerDB testing." -ForegroundColor Green
+
+# ── Helper: attach files ──────────────────────────────────────────────────────
+function Invoke-AttachFiles {
+    param ($script:SqlInstance, $DbName, $mdfFile, $ldfFile)
+
+    $attachSql = if ($ldfFile) { "
+        CREATE DATABASE [$DbName] ON
+            (FILENAME = '$($mdfFile.FullName)')
+        LOG ON
+            (FILENAME = '$($ldfFile.FullName)')
+        FOR ATTACH"
+    } else { "
+        CREATE DATABASE [$DbName] ON
+            (FILENAME = '$($mdfFile.FullName)')
+        FOR ATTACH_REBUILD_LOG"
+    }
+
+    $attachResult = sqlcmd -S $script:SqlInstance -E -Q $attachSql 2>&1
+    if ($attachResult -match "Error|error|failed|Failed") {
+        Write-Host "ERROR: Attach failed." -ForegroundColor Red
+        Write-Host $attachResult -ForegroundColor Red
+        return $false
+    }
+    return $true
+}
+
+# ── Run ───────────────────────────────────────────────────────────────────────
+Invoke-AttachTpccDatabase
 #endregion
+
 Stop-Transcript
 
 #region HammerDB Testing
-$SqlInstance  = "localhost\TPCC"
-$DbName       = "tpcc"
 $MdfName      = "tpcc.mdf"
 $LdfName      = "tpcc_log.ldf"
 $HammerDBHome = "C:\Program Files\HammerDB-4.8"
@@ -458,6 +523,16 @@ function Get-TestTiming {
     else                 { return @{ Rampup = 2; Duration = 10; SleepSec = 780 * $multiplier } }
 }
 
+
+function Clear-SqlErrorLog {
+    param([string]$SqlInstance = "localhost\TPCC")
+
+    Write-Host "Cycling SQL Server error log..." -ForegroundColor Cyan
+    sqlcmd -S $SqlInstance -E -Q "EXEC sp_cycle_errorlog" | Out-Null
+    Write-Host "SQL error log cycled — fresh log ready." -ForegroundColor Green
+}
+
+
 function Run-HammerDB {
     param([int]$VU)
 
@@ -485,9 +560,9 @@ function Run-HammerDB {
 }
 
 # ── Step 1: Check if tpcc database exists ────────────────────────────────────
-Write-Log "Checking if database '$DbName' exists on $SqlInstance..."
+Write-Log "Checking if database '$DbName' exists on $script:SqlInstance..."
 
-$dbExists = sqlcmd -S $SqlInstance -E -Q "
+$dbExists = sqlcmd -S $script:SqlInstance -E -Q "
 SET NOCOUNT ON
 SELECT COUNT(*) FROM sys.databases WHERE name = '$DbName'" 2>&1 |
     Where-Object { $_ -match '^\s*\d+\s*$' } |
@@ -496,7 +571,7 @@ SELECT COUNT(*) FROM sys.databases WHERE name = '$DbName'" 2>&1 |
 if ($dbExists -eq "1") {
     Write-Log "Database '$DbName' already exists." "INFO"
 
-    $whCount = sqlcmd -S $SqlInstance -E -Q "
+    $whCount = sqlcmd -S $script:SqlInstance -E -Q "
     SET NOCOUNT ON
     SELECT COUNT(*) FROM $DbName.dbo.warehouse" 2>&1 |
         Where-Object { $_ -match '^\s*\d+\s*$' } |
@@ -556,13 +631,13 @@ FOR ATTACH_REBUILD_LOG"
     }
 
     Write-Log "Attaching '$DbName' from $mdfPath ..."
-    $attachResult = sqlcmd -S $SqlInstance -E -Q $attachSql 2>&1
+    $attachResult = sqlcmd -S $script:SqlInstance -E -Q $attachSql 2>&1
     if ($attachResult -match "Error|error|failed|Failed") {
         Write-Log "Attach failed: $attachResult" "ERROR"
         #exit 1
     }
 
-    $state = sqlcmd -S $SqlInstance -E -Q "
+    $state = sqlcmd -S $script:SqlInstance -E -Q "
     SET NOCOUNT ON
     SELECT state_desc FROM sys.databases WHERE name = '$DbName'" 2>&1 |
         Where-Object { $_ -match '[A-Z]' -and $_ -notmatch 'state_desc|---' } |
@@ -573,7 +648,7 @@ FOR ATTACH_REBUILD_LOG"
         #exit 1
     }
 
-    $whCount = sqlcmd -S $SqlInstance -E -Q "
+    $whCount = sqlcmd -S $script:SqlInstance -E -Q "
     SET NOCOUNT ON
     SELECT COUNT(*) FROM $DbName.dbo.warehouse" 2>&1 |
         Where-Object { $_ -match '^\s*\d+\s*$' } |
@@ -639,6 +714,8 @@ foreach ($vu in $VUList) {
     Write-Log   "Step $stepDone / $totalSteps  |  VU = $vu"
     Write-Plain "+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-"
 
+    Clear-SqlErrorLog -SqlInstance "localhost\TPCC"
+
     $stepStart = Get-Date
     $result    = Run-HammerDB -VU $vu
     $elapsed   = (Get-Date) - $stepStart
@@ -658,6 +735,18 @@ foreach ($vu in $VUList) {
     }
 }
 
+$logPath = "C:\Program Files\Microsoft SQL Server\MSSQL16.TPCC\MSSQL\Log\ERRORLOG"
+$errors  = Get-Content $logPath |
+    Where-Object { $_ -match "error|fail|warn|corrupt" } |
+    Where-Object { $_ -notmatch "telemetry|informational|reinitialized|Logging SQL Server" }
+
+if ($errors) {
+    Write-Host "SQL errors during test:" -ForegroundColor Red
+    $errors | ForEach-Object { Write-Host $_ -ForegroundColor Red }
+} else {
+    Write-Host "SQL log clean." -ForegroundColor Green
+}
+
 $totalElapsed = (Get-Date) - $grandStart
 Write-Plain "+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-"
 Write-Log   "All steps complete. Total elapsed : $($totalElapsed.ToString('hh\:mm\:ss'))"
@@ -673,3 +762,16 @@ $completedAt = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
     [System.Windows.Forms.MessageBoxButtons]::OK,
     [System.Windows.Forms.MessageBoxIcon]::Information
 )
+
+
+#region extra functions
+
+function cleansql{
+sqlcmd -S "localhost\TPCC" -E -Q "
+ALTER DATABASE tpcc SET OFFLINE WITH ROLLBACK IMMEDIATE;
+DROP DATABASE tpcc;"
+
+Remove-Item "D:\DATA\tpcc.mdf" -Force -ErrorAction SilentlyContinue
+Remove-Item "D:\DATA\tpcc_log.ldf" -Force -ErrorAction SilentlyContinue
+
+}
