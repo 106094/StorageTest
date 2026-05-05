@@ -145,9 +145,9 @@ Write-Host "========================================================"
 $offlineDisks = Get-Disk | Where-Object { 
     $_.IsOffline -eq $true -and 
     $_.IsReadOnly -eq $true
-$iSCSIDisk  = $offlineDisks
 }
 
+$iSCSIDisk  = $offlineDisks
 
 if ($offlineDisks.Count -eq 0) {
     Write-Host "WARNING: No offline/readonly disks found — iSCSI disk may already be online." -ForegroundColor Yellow
@@ -327,7 +327,7 @@ $percent = 0
         }
     }
 }
-Write-Progress -Activity "Copying SQL Files" -Complete
+Write-Progress -Activity "Copying SQL Files" -Completed
 Write-Host "Copy complete." -ForegroundColor Green
 }
 # ── Verify copy integrity ─────────────────────────────────────────────────────
@@ -456,7 +456,7 @@ function Invoke-AttachTpccDatabase {
 
 # ── Helper: attach files ──────────────────────────────────────────────────────
 function Invoke-AttachFiles {
-    param ($script:SqlInstance, $DbName, $mdfFile, $ldfFile)
+    param ($SqlInstance, $DbName, $mdfFile, $ldfFile)
 
     $attachSql = if ($ldfFile) { "
         CREATE DATABASE [$DbName] ON
@@ -492,11 +492,12 @@ $HammerDBHome = "C:\Program Files\HammerDB-4.8"
 $TclScript    = "./scripts/tcl/mssqls/tprocc/mssqls_tprocc_run_vu.tcl"
 $LogStamp     = Get-Date -Format "yyyyMMdd_HHmmss"
 $OurLog       = "$env:USERPROFILE\Desktop\hammerdb_${LogStamp}.log"
+$logPath = "C:\Program Files\Microsoft SQL Server\MSSQL16.TPCC\MSSQL\Log\ERRORLOG"
 
 function Write-Log {
     param([string]$Message, [string]$Level = "INFO")
     $ts   = (Get-Date -Format "ddd MMM dd HH:mm:ss zzz yyyy") -replace "\+08:00","+0800"
-    $line = "Hammerdb Log @ $ts`nAutopilot [$Level] $Message"
+    $line = "Hammerdb Log @ $ts : Autopilot [$Level] $Message"
     Write-Host $line
     Add-Content -Path $OurLog -Value $line
 }
@@ -523,7 +524,6 @@ function Get-TestTiming {
     else                 { return @{ Rampup = 2; Duration = 10; SleepSec = 780 * $multiplier } }
 }
 
-
 function Clear-SqlErrorLog {
     param([string]$SqlInstance = "localhost\TPCC")
 
@@ -531,7 +531,6 @@ function Clear-SqlErrorLog {
     sqlcmd -S $SqlInstance -E -Q "EXEC sp_cycle_errorlog" | Out-Null
     Write-Host "SQL error log cycled — fresh log ready." -ForegroundColor Green
 }
-
 
 function Run-HammerDB {
     param([int]$VU)
@@ -559,7 +558,17 @@ function Run-HammerDB {
     return @{ ExitCode = $exit; SleepSec = $timing.SleepSec }
 }
 
-# ── Step 1: Check if tpcc database exists ────────────────────────────────────
+# ── Step 1: Check if sql path and tpcc database exists ────────────────────────────────────
+
+if ([string]::IsNullOrEmpty($script:SqlInstance)) {
+    Write-Log "WARNING: SqlInstance not set — re-detecting..." "WARN"
+    $script:SqlInstance = sqlcmd -L |
+        Where-Object { $_ -notmatch "Servers:" -and $_.Trim() -ne "" } |
+        ForEach-Object { $_.Trim() } |
+        Select-Object -First 1
+}
+Write-Log "SQL Instance : $script:SqlInstance" "INFO"
+
 Write-Log "Checking if database '$DbName' exists on $script:SqlInstance..."
 
 $dbExists = sqlcmd -S $script:SqlInstance -E -Q "
@@ -693,7 +702,6 @@ switch ($diskChoice) {
     }
 }
 # ── Step 3: Run HammerDB test ─────────────────────────────────────────────────
-
 $totalSteps = $VUList.Count
 $stepDone   = 0
 $grandStart = Get-Date
@@ -722,6 +730,16 @@ foreach ($vu in $VUList) {
 
     Write-Log "VU $vu done. Exit: $($result.ExitCode)  |  Elapsed: $($elapsed.ToString('hh\:mm\:ss'))"
 
+   $sqlErrors = Get-Content $logPath |
+        Where-Object { $_ -match "error|fail|warn|corrupt" } |
+        Where-Object { $_ -notmatch "telemetry|informational|reinitialized|Logging SQL Server" }
+    if ($sqlErrors) {
+        Write-Log "SQL errors at VU $vu :" "WARN"
+        $sqlErrors | ForEach-Object { Write-Log $_ "WARN" }
+    } else {
+        Write-Log "SQL log clean at VU $vu." "INFO"
+    }
+    
     if ($result.ExitCode -ne 0) {
         Write-Log "ERROR: Non-zero exit at VU $vu — stopping." "ERROR"
         exit 1
@@ -733,18 +751,6 @@ foreach ($vu in $VUList) {
         Write-Log "Sleeping $waitMin min before next step..."
         Start-Sleep -Seconds $result.SleepSec
     }
-}
-
-$logPath = "C:\Program Files\Microsoft SQL Server\MSSQL16.TPCC\MSSQL\Log\ERRORLOG"
-$errors  = Get-Content $logPath |
-    Where-Object { $_ -match "error|fail|warn|corrupt" } |
-    Where-Object { $_ -notmatch "telemetry|informational|reinitialized|Logging SQL Server" }
-
-if ($errors) {
-    Write-Host "SQL errors during test:" -ForegroundColor Red
-    $errors | ForEach-Object { Write-Host $_ -ForegroundColor Red }
-} else {
-    Write-Host "SQL log clean." -ForegroundColor Green
 }
 
 $totalElapsed = (Get-Date) - $grandStart
