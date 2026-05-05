@@ -536,7 +536,6 @@ function Run-HammerDB {
     param([int]$VU)
 
     $timing = Get-TestTiming -VU $VU
-
     $env:VU_COUNT    = "$VU"
     $env:VU_RAMPUP   = "$($timing.Rampup)"
     $env:VU_DURATION = "$($timing.Duration)"
@@ -545,21 +544,52 @@ function Run-HammerDB {
     Write-Plain "--- HammerDB output start VU $VU ---"
 
     Push-Location $HammerDBHome
+    $exit = 0
+try {
+        cmd /c "`"$HammerDBHome\hammerdbcli.bat`" auto $TclScript" 2>&1 | 
+            ForEach-Object { Write-HammerLine $_ }
+        $exit = $LASTEXITCODE
+    }
+    catch {
+        Write-Log "HammerDB interrupted — cleaning up SQL Server..." "WARN"
+        $exit = -1
+    }
+    finally {
+        Pop-Location
+        Write-Plain "--- HammerDB output end VU $VU ---"
 
-    cmd /c "`"$HammerDBHome\hammerdbcli.bat`" auto $TclScript" 2>&1 |
-        ForEach-Object {
-            Write-HammerLine $_
+        # ── Auto-recover DB after any interruption ────────────────────────
+        Write-Log "Checking database state after run..." "INFO"
+        $state = sqlcmd -S $script:SqlInstance -E -Q "
+        SET NOCOUNT ON
+        SELECT state_desc FROM sys.databases WHERE name = '$DbName'" 2>&1 |
+            Where-Object { $_ -match '[A-Z]' -and $_ -notmatch 'state_desc|---' } |
+            ForEach-Object { $_.Trim() }
+
+        if ($state -ne "ONLINE") {
+            Write-Log "Database state is '$state' — attempting recovery..." "WARN"
+            sqlcmd -S $script:SqlInstance -E -Q "
+            ALTER DATABASE [$DbName] SET OFFLINE WITH ROLLBACK IMMEDIATE;
+            DROP DATABASE [$DbName];" 2>&1 | Out-Null
+
+            # Re-attach
+            sqlcmd -S $script:SqlInstance -E -Q "
+            CREATE DATABASE [$DbName] ON
+                (FILENAME = 'D:\DATA\tpcc.mdf')
+            LOG ON
+                (FILENAME = 'D:\DATA\tpcc_log.ldf')
+            FOR ATTACH;" 2>&1 | Out-Null
+
+            Write-Log "Database re-attached." "INFO"
+        } else {
+            Write-Log "Database state OK : $state" "INFO"
         }
+    }
 
-    $exit = $LASTEXITCODE
-    Pop-Location
-
-    Write-Plain "--- HammerDB output end VU $VU ---"
     return @{ ExitCode = $exit; SleepSec = $timing.SleepSec }
 }
 
 # ── Step 1: Check if sql path and tpcc database exists ────────────────────────────────────
-
 if ([string]::IsNullOrEmpty($script:SqlInstance)) {
     Write-Log "WARNING: SqlInstance not set — re-detecting..." "WARN"
     $script:SqlInstance = sqlcmd -L |
@@ -568,9 +598,7 @@ if ([string]::IsNullOrEmpty($script:SqlInstance)) {
         Select-Object -First 1
 }
 Write-Log "SQL Instance : $script:SqlInstance" "INFO"
-
 Write-Log "Checking if database '$DbName' exists on $script:SqlInstance..."
-
 $dbExists = sqlcmd -S $script:SqlInstance -E -Q "
 SET NOCOUNT ON
 SELECT COUNT(*) FROM sys.databases WHERE name = '$DbName'" 2>&1 |
@@ -780,4 +808,13 @@ DROP DATABASE tpcc;"
 Remove-Item "D:\DATA\tpcc.mdf" -Force -ErrorAction SilentlyContinue
 Remove-Item "D:\DATA\tpcc_log.ldf" -Force -ErrorAction SilentlyContinue
 
+}
+
+# Gracefully signal HammerDB to stop
+function killhammerDBTest{
+$hammerProcess = Get-Process -Name "tclsh*" -ErrorAction SilentlyContinue
+if ($hammerProcess) {
+    Write-Host "Stopping HammerDB gracefully..."
+    $hammerProcess | Stop-Process -ErrorAction SilentlyContinue
+}
 }
