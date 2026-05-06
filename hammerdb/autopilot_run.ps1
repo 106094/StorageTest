@@ -363,6 +363,30 @@ if ($allMatch) {
 #endregion
 
 #region import data to sql server
+# ── Helper: attach files ──────────────────────────────────────────────────────
+function Invoke-AttachFiles {
+    param ($SqlInstance, $DbName, $mdfFile, $ldfFile)
+
+    $attachSql = if ($ldfFile) { "
+        CREATE DATABASE [$DbName] ON
+            (FILENAME = '$($mdfFile.FullName)')
+        LOG ON
+            (FILENAME = '$($ldfFile.FullName)')
+        FOR ATTACH"
+    } else { "
+        CREATE DATABASE [$DbName] ON
+            (FILENAME = '$($mdfFile.FullName)')
+        FOR ATTACH_REBUILD_LOG"
+    }
+
+    $attachResult = sqlcmd -S $script:SqlInstance -E -Q $attachSql 2>&1
+    if ($attachResult -match "Error|error|failed|Failed") {
+        Write-Host "ERROR: Attach failed." -ForegroundColor Red
+        Write-Host $attachResult -ForegroundColor Red
+        return $false
+    }
+    return $true
+}
 function Invoke-AttachTpccDatabase {
     param (
         [string]$DataPath    = $DataPath,
@@ -402,6 +426,10 @@ function Invoke-AttachTpccDatabase {
         Where-Object { $_ -match '[A-Z]' -and $_ -notmatch 'state_desc|---' } |
         ForEach-Object { $_.Trim() }
 
+    if ([string]::IsNullOrWhiteSpace($state)) {
+        $state = "NOT_FOUND" 
+       }
+
     switch ($state) {
         "ONLINE" {
             Write-Host "Database '$DbName' already attached and ONLINE — skipping." -ForegroundColor Green
@@ -421,6 +449,10 @@ function Invoke-AttachTpccDatabase {
         "SUSPECT" {
             Write-Host "Database '$DbName' is SUSPECT — re-attaching..." -ForegroundColor Yellow
             sqlcmd -S $script:SqlInstance -E -Q "DROP DATABASE [$DbName];" 2>&1 | Out-Null
+            if (-not (Invoke-AttachFiles -SqlInstance $script:SqlInstance -DbName $DbName -mdfFile $mdfFile -ldfFile $ldfFile)) { return $false }
+        }
+        "NOT_FOUND" {
+            Write-Host "Database '$DbName' is not found — attaching..." -ForegroundColor Yellow
             if (-not (Invoke-AttachFiles -SqlInstance $script:SqlInstance -DbName $DbName -mdfFile $mdfFile -ldfFile $ldfFile)) { return $false }
         }
         default {
@@ -451,31 +483,6 @@ function Invoke-AttachTpccDatabase {
 
     Write-Host "Warehouse count : $whCount" -ForegroundColor Green
     Write-Host "Database ready for HammerDB testing." -ForegroundColor Green
-    return $true
-}
-
-# ── Helper: attach files ──────────────────────────────────────────────────────
-function Invoke-AttachFiles {
-    param ($SqlInstance, $DbName, $mdfFile, $ldfFile)
-
-    $attachSql = if ($ldfFile) { "
-        CREATE DATABASE [$DbName] ON
-            (FILENAME = '$($mdfFile.FullName)')
-        LOG ON
-            (FILENAME = '$($ldfFile.FullName)')
-        FOR ATTACH"
-    } else { "
-        CREATE DATABASE [$DbName] ON
-            (FILENAME = '$($mdfFile.FullName)')
-        FOR ATTACH_REBUILD_LOG"
-    }
-
-    $attachResult = sqlcmd -S $script:SqlInstance -E -Q $attachSql 2>&1
-    if ($attachResult -match "Error|error|failed|Failed") {
-        Write-Host "ERROR: Attach failed." -ForegroundColor Red
-        Write-Host $attachResult -ForegroundColor Red
-        return $false
-    }
     return $true
 }
 
