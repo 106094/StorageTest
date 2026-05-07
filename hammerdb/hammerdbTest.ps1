@@ -5,6 +5,11 @@ $LogStamp     = Get-Date -Format "yyyyMMdd_HHmmss"
 $TranscriptLog= "$env:USERPROFILE\Desktop\hammerdbSetup_${LogStamp}.log"
 $DataPath    = "D:\DATA"
 $DbName      = "tpcc"
+$bakupLog    = "$env:USERPROFILE\Desktop\_backuplogs"
+if(!(test-path $bakupLog)){
+New-Item -ItemType Directory -Path $bakupLog|Out-Null
+}
+Get-ChildItem "$env:USERPROFILE\Desktop\hammerdb_*.log"|Move-Item $bakupLog -Force
 
 Start-Transcript -Path $TranscriptLog -Append
 
