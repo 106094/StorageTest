@@ -9,7 +9,7 @@ $bakupLog    = "$env:USERPROFILE\Desktop\_backuplogs"
 if(!(test-path $bakupLog)){
 New-Item -ItemType Directory -Path $bakupLog|Out-Null
 }
-Get-ChildItem "$env:USERPROFILE\Desktop\hammerdb_*.log"|Move-Item $bakupLog -Force
+Get-ChildItem "$env:USERPROFILE\Desktop\hammerdb_*.log"|Move-Item -Destination $bakupLog -Force
 
 Start-Transcript -Path $TranscriptLog -Append
 
