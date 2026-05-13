@@ -56,13 +56,14 @@ if [[ "$OSTYPE" == "darwin"* ]]; then
 	read -p "Select disk number: " choice
 	destDisk="${volumes[$choice]}"
 elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
-    # High Performance Direct Kernel Mount over physical Ethernet
+    # High Performance Direct Kernel Mount over physical Ethernet (Sync & Cache-less)
     LOCAL_MOUNT="$HOME/nas_speedtest"
     mkdir -p "$LOCAL_MOUNT"
 
     if ! mountpoint -q "$LOCAL_MOUNT"; then
         echo "Executing kernel-level direct SMB mount (Requires sudo)..."
-        sudo mount -t cifs "//$NAS_IP/$SHARE_NAME" "$LOCAL_MOUNT" -o username="$NAS_USER",password="$NAS_PASS",vers=3.0,iocharset=utf8,actimeo=0,rsize=1048576,wsize=1048576
+        sudo mount -t cifs "//$NAS_IP/$SHARE_NAME" "$LOCAL_MOUNT" -o username="$NAS_USER",password="$NAS_PASS",sync,cache=none,actimeo=0,vers=3.0,uid=$(id -u),gid=$(id -g),forceuid,forcegid       
+
     fi
 
     if mountpoint -q "$LOCAL_MOUNT"; then
@@ -89,15 +90,15 @@ done
 # =================================================================
 sources=()
 while true; do
-if [[ "$OSTYPE" == "darwin"* ]]; then
-    path=$(osascript -e 'POSIX path of (choose folder with prompt "Select Source Folder")')
-elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
-    if command -v zenity &> /dev/null; then
-        path=$(zenity --file-selection --directory --title="Select Source Folder")
-    else
-        read -p "Enter source folder path: " path
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        path=$(osascript -e 'POSIX path of (choose folder with prompt "Select Source Folder")')
+    elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
+        if command -v zenity &> /dev/null; then
+            path=$(zenity --file-selection --directory --title="Select Source Folder")
+        else
+            read -p "Enter source folder path: " path
+        fi
     fi
-fi
     [[ -z "$path" ]] && break
     sources+=("$path")
     
@@ -141,8 +142,10 @@ run_benchmark() {
         if [[ "$OSTYPE" == "darwin"* ]]; then
             ditto "$src" "$targetDir"
         else
-            # Pre-installed Linux stream engine (Matches hardware network speed)
-            tar -C "$src" -cf - . | tar -C "$targetDir" -xf -
+            # Human Action Mimicking Engine (rsync closely matches File Explorer overhead)
+             rsync -aHAX --no-compress "$src/" "$targetDir/"
+            #cp -r "$src/." "$targetDir/"
+            #tar -C "$src" -cf - . | tar -xf - -C "$targetDir"
         fi
         
         # Force flush physical hardware and network pipe buffers
@@ -160,9 +163,33 @@ run_benchmark() {
         
         if [[ $i -lt 5 ]]; then
             rm -rf "$targetDir"
+            if [[ "$mode" == "Write" ]]; then
+                local local_recycle=""
+                for r_name in "@Recycle" "#recycle" "#Recycle" "@recycle" "Network Trash Folder"; do
+                    if [[ -d "$dstBase/$r_name" ]]; then
+                        local_recycle="$dstBase/$r_name"
+                        break
+                    fi
+                done
+                if [[ -n "$local_recycle" ]]; then
+                    echo -n "    [Loop $i] Force Purging NAS Recycle Bin..." >&2
+                    { rm -rf "$local_recycle"/* "$local_recycle"/.[^.]*; } 2>/dev/null
+                    sync
+                    
+                    local p_attempts=0
+                    while [ -n "$(ls -A "$local_recycle" 2>/dev/null)" ] && [ $p_attempts -lt 3 ]; do
+                        ((p_attempts++))
+                        sleep 1 && echo -n "." >&2
+                        { rm -rf "$local_recycle"/* "$local_recycle"/.[^.]*; } 2>/dev/null
+                        sync
+                    done
+                    echo " Cleared." >&2
+                fi
+            fi
         else 
             echo "$targetDir"
         fi
+
     done
 }
 
@@ -172,39 +199,47 @@ run_benchmark() {
 for sourcePath in "${sources[@]}"; do
     sourcename=$(basename "$sourcePath")
     
-    # Run Write Benchmark
     lastOnDisk=$(run_benchmark "$sourcePath" "$destDisk" "Write" "$sourcename" | tail -n 1)
     
-    # SAFE VERIFICATION BLOCK (Prevents data loss on connection drop)
+    srcCount=$(find "$sourcePath" | wc -l)
+    dstCount=0
     if [[ -d "$lastOnDisk" && -n "$lastOnDisk" ]]; then
-        echo "Verification passed. Purging original local source folder..."
+        dstCount=$(find "$lastOnDisk" | wc -l)
+    fi
+
+    if [ "$dstCount" -eq "$srcCount" ] && [ "$dstCount" -gt 0 ]; then
+        echo "Verification passed (File count matched: $dstCount). Purging original local source folder..."
         rm -rf "$sourcePath" 2>/dev/null
     else
-        echo "CRITICAL ERROR: Benchmark transfer target was not found on NAS. Aborting loop to protect data."
+        echo "CRITICAL ERROR: File count mismatch or transfer failed (Local: $srcCount, NAS: $dstCount). Aborting loop."
         exit 1
     fi
     
-    # Run Read Benchmark
     lastOnSys=$(run_benchmark "$lastOnDisk" "/tmp" "Read" "$sourcename" | tail -n 1)
     
     echo "Recovering: Moving $lastOnSys back to $sourcePath"
     mv "$lastOnSys" "$sourcePath"
-    echo -e "\nCleaning up test folders..."
+    
+    echo -e "\nCleaning up test folders on NAS..."
     rm -rf "$lastOnDisk"
 
-    # Final Recycle Bin Purge
-    if [ -d "$destDisk/$recycleName" ]; then
-	    echo -n "Performing final NAS Recycle Bin purge..."
-		{ rm -rf "$destDisk/$recycleName"/* "$destDisk/$recycleName"/.[^.]*; } 2>/dev/null
-	    sleep 2
-	    attempts=0     
-	    while [ -n "$(ls -A "$destDisk/$recycleName" 2>/dev/null)" ] && [ $attempts -lt 5 ]; do
-		((attempts++))
-		[[ $attempts -lt 5 ]] && sleep 2 && echo -n "." >&2
-		    { rm -rf "$destDisk/$recycleName"/* "$destDisk/$recycleName"/.[^.]*; } 2>/dev/null
-	    done
-	    echo " Ready." >&2
-     fi
+    if [ -n "$recycleName" ] && [ -d "$destDisk/$recycleName" ]; then
+        echo -n "Performing final NAS Recycle Bin purge..."
+        { rm -rf "$destDisk/$recycleName"/* "$destDisk/$recycleName"/.[^.]*; } 2>/dev/null
+        sync
+        echo " Ready." >&2
+    fi
+     
 done
 
-echo -e "Done! Results: $csvLog"
+# =================================================================
+# 5. Unmount
+# =================================================================
+if [[ "$OSTYPE" == "linux-gnu"* ]]; then
+    if mountpoint -q "$LOCAL_MOUNT"; then
+        echo -e "\nAll benchmarks completed. Unmounting NAS natively..."
+        sudo umount -l "$LOCAL_MOUNT"
+    fi
+fi
+
+echo -e "\nDone! Results: $csvLog"
