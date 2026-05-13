@@ -13,7 +13,7 @@ Get-ChildItem "$env:USERPROFILE\Desktop\hammerdb_*.log"|Move-Item -Destination $
 
 Start-Transcript -Path $TranscriptLog -Append
 
-#region ── iSCSI Connection Setup ────────────────────────────────────────────────────
+#region 笏笏 iSCSI Connection Setup 笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏
 
 function Connect-IscsiNAS {
     param([string]$TargetIP, [string]$TargetIQN)
@@ -96,7 +96,7 @@ function Select-IscsiTarget {
     return $targetList[[int]$selection - 1].NodeAddress
 }
 
-# ── Step 1: Check existing iSCSI connections ──────────────────────────────────
+# 笏笏 Step 1: Check existing iSCSI connections 笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏
 Write-Host ""
 Write-Host "========================================================"
 Write-Host "iSCSI Connection Check"
@@ -116,7 +116,7 @@ if ($connectedTargets) {
         $index++
     }
 
-    # ── Ask AFTER listing all targets (bug fix) ───────────────────────────
+    # 笏笏 Ask AFTER listing all targets (bug fix) 笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏
     Write-Host ""
     $confirm = Read-Host "Is this the correct iSCSI target for this test? (Y/N)"
     if ($confirm -eq "Y") {
@@ -127,7 +127,7 @@ if ($connectedTargets) {
 
 if (-not $iscsiReady) {
     Write-Host ""
-    Write-Host "No valid iSCSI target confirmed — connecting new target..." -ForegroundColor Yellow
+    Write-Host "No valid iSCSI target confirmed 窶・connecting new target..." -ForegroundColor Yellow
     $TargetIP  = Read-Host "Enter iSCSI NAS IP address"
     $TargetIQN = Select-IscsiTarget -TargetIP $TargetIP
     if ($TargetIQN) {
@@ -146,7 +146,7 @@ Write-Host "========================================================"
 
 #endregion
 
-#region ── set iSCSI disk online and writable then assign letter D
+#region 笏笏 set iSCSI disk online and writable then assign letter D
 $offlineDisks = Get-Disk | Where-Object { 
     $_.IsOffline -eq $true -and 
     $_.IsReadOnly -eq $true
@@ -155,7 +155,7 @@ $offlineDisks = Get-Disk | Where-Object {
 $iSCSIDisk  = $offlineDisks
 
 if ($offlineDisks.Count -eq 0) {
-    Write-Host "WARNING: No offline/readonly disks found — iSCSI disk may already be online." -ForegroundColor Yellow
+    Write-Host "WARNING: No offline/readonly disks found 窶・iSCSI disk may already be online." -ForegroundColor Yellow
     $onlineiscasi = Get-Disk | Where-Object { 
     $_.IsOffline -eq $false -and 
     $_.IsReadOnly -eq $false -and
@@ -173,7 +173,7 @@ if ($offlineDisks.Count -eq 0) {
 
 # Exactly one offline+readonly disk found
 if ($iSCSIDisk.Count -gt 1) {
-    Write-Host "WARNING: Multiple offline/readonly disks found — cannot determine which is iSCSI." -ForegroundColor Yellow
+    Write-Host "WARNING: Multiple offline/readonly disks found 窶・cannot determine which is iSCSI." -ForegroundColor Yellow
     Write-Host ""
     $offlineDisks | Select-Object Number, FriendlyName, OperationalStatus, IsOffline, IsReadOnly,
         @{N='Size_GB';E={[math]::Round($_.Size/1GB,1)}}, PartitionStyle |
@@ -196,17 +196,17 @@ Start-Sleep -Seconds 2
 $disk = Get-Disk -Number $script:diskNumber
 Write-Host "Disk $script:diskNumber state : PartitionStyle=$($disk.PartitionStyle)  OperationalStatus=$($disk.OperationalStatus)" -ForegroundColor Cyan
 
-# ── Initialize if RAW ─────────────────────────────────────────────────────────
+# 笏笏 Initialize if RAW 笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏
 if ($disk.PartitionStyle -eq "RAW") {
-    Write-Host "Disk is uninitialized — initializing with GPT..." -ForegroundColor Yellow
+    Write-Host "Disk is uninitialized 窶・initializing with GPT..." -ForegroundColor Yellow
     Initialize-Disk -Number $script:diskNumber -PartitionStyle GPT
     Start-Sleep -Seconds 2
     Write-Host "Disk initialized." -ForegroundColor Green
 } else {
-    Write-Host "Disk already initialized ($($disk.PartitionStyle)) — skipping initialize." -ForegroundColor Green
+    Write-Host "Disk already initialized ($($disk.PartitionStyle)) 窶・skipping initialize." -ForegroundColor Green
 }
 
-# ── Check if data partition already exists ────────────────────────────────────
+# 笏笏 Check if data partition already exists 笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏
 $partition = Get-Partition -DiskNumber $script:diskNumber -ErrorAction SilentlyContinue |
     Where-Object { $_.Type -ne "Reserved" }
 if (-not $partition) {
@@ -215,10 +215,10 @@ if (-not $partition) {
     Start-Sleep -Seconds 2
     Write-Host "Partition created." -ForegroundColor Green
 } else {
-    Write-Host "Data partition already exists — skipping." -ForegroundColor Green
+    Write-Host "Data partition already exists 窶・skipping." -ForegroundColor Green
 }
 
-# ── Check if formatted ────────────────────────────────────────────────────────
+# 笏笏 Check if formatted 笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏
 $volume = Get-Volume | Where-Object { $_.Path -like "*$($partition.Guid)*" } 2>$null
 if (-not $volume -or $volume.FileSystem -eq "" -or $volume.FileSystem -eq $null) {
     Write-Host "Formatting as NTFS..." -ForegroundColor Cyan
@@ -227,22 +227,22 @@ if (-not $volume -or $volume.FileSystem -eq "" -or $volume.FileSystem -eq $null)
     Start-Sleep -Seconds 2
     Write-Host "Formatted." -ForegroundColor Green
 } else {
-    Write-Host "Filesystem already exists ($($volume.FileSystem)) — skipping format." -ForegroundColor Green
+    Write-Host "Filesystem already exists ($($volume.FileSystem)) 窶・skipping format." -ForegroundColor Green
 }
 
-# ── Assign drive letter D to iSCSI disk ──────────────────────────────────────
+# 笏笏 Assign drive letter D to iSCSI disk 笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏
 $partition = Get-Partition -DiskNumber $script:diskNumber |
     Where-Object { $_.Type -ne "Reserved" }
 
-# ── Assign drive letter D ─────────────────────────────────────────────────────
+# 笏笏 Assign drive letter D 笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏
 if ($partition.DriveLetter -eq "D") {
-    Write-Host "Drive letter D already assigned — skipping." -ForegroundColor Green
+    Write-Host "Drive letter D already assigned 窶・skipping." -ForegroundColor Green
 }
 else {
 $usedLetters = (Get-Volume | Where-Object { $_.DriveLetter }).DriveLetter
 
 if ("D" -in $usedLetters) {
-    Write-Host "Drive letter D is occupied — reassigning existing D to another letter..." -ForegroundColor Yellow
+    Write-Host "Drive letter D is occupied 窶・reassigning existing D to another letter..." -ForegroundColor Yellow
 
     # Find next available letter (skip A,B,C,D)
     $allLetters = 'E','F','G','H','I','J','K','L','M','N','O','P','Q','R','S','T','U','V','W','X','Y','Z'
@@ -267,7 +267,7 @@ Set-Partition -DiskNumber $script:diskNumber `
 
 Write-Host "iSCSI disk assigned to D:\" -ForegroundColor Green
 }
-# ── Verify ────────────────────────────────────────────────────────────────────
+# 笏笏 Verify 笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏
 Get-Volume -DriveLetter "D" | 
     Select-Object DriveLetter, FileSystem, FileSystemLabel, HealthStatus,
         @{N='Size_GB';E={[math]::Round($_.Size/1GB,1)}} |
@@ -282,7 +282,7 @@ Get-Volume -DriveLetter "D" |
 $dbpath="D:\DATA"
 $dbfiles = @("tpcc.mdf", "tpcc_log.ldf") | Where-Object { Test-Path "$dbpath\$_" }
 
-# ── Search all drives for \DATA folder ───────────────────────────────────────
+# 笏笏 Search all drives for \DATA folder 笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏
 $drives = Get-PSDrive -PSProvider FileSystem |
     Where-Object { $_.Root -match '^[ABE-Z]:\\$' } |
     Select-Object -ExpandProperty Name
@@ -335,7 +335,7 @@ $percent = 0
 Write-Progress -Activity "Copying SQL Files" -Completed
 Write-Host "Copy complete." -ForegroundColor Green
 }
-# ── Verify copy integrity ─────────────────────────────────────────────────────
+# 笏笏 Verify copy integrity 笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏
 Write-Host ""
 Write-Host "Verifying copy integrity..." -ForegroundColor Cyan
 $allMatch = $true
@@ -353,22 +353,51 @@ foreach ($srcFile in $sourceFiles) {
     $status = if ($match) { "OK" } else { "FAIL" }
     $color  = if ($match) { "Green" } else { "Red" }
     Write-Host "$status  $relativePath" -ForegroundColor $color
-    Write-Host "     Size   : $($srcFile.Length) bytes  →  $($dest.Length) bytes  $(if ($match) {'✓'} else {'✗ MISMATCH'})"
+    Write-Host "     Size   : $($srcFile.Length) bytes  竊・ $($dest.Length) bytes  $(if ($match) {'笨・} else {'笨・MISMATCH'})"
     if (-not $match) { $allMatch = $false }
 }
 
-# ── Summary ───────────────────────────────────────────────────────────────────
+# 笏笏 Summary 笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏
 Write-Host ""
 if ($allMatch) {
-    Write-Host "All files verified — copy integrity confirmed." -ForegroundColor Green
+    Write-Host "All files verified 窶・copy integrity confirmed." -ForegroundColor Green
 } else {
-    Write-Host "ERROR: One or more files failed verification — copy may be corrupted." -ForegroundColor Red
+    Write-Host "ERROR: One or more files failed verification 窶・copy may be corrupted." -ForegroundColor Red
+    #exit 1
+}
+
+# 笏笏 Set ACEs: grant Everyone Full Control on D:\DATA 笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏
+Write-Host ""
+Write-Host "Setting Access Control Entries on D:\DATA ..." -ForegroundColor Cyan
+
+try {
+    $targetPath = "D:\DATA"
+    $acl        = Get-Acl -Path $targetPath
+
+    # Build the ACE: Everyone | FullControl | ContainerInherit+ObjectInherit | None | Allow
+    $identity   = [System.Security.Principal.NTAccount]"Everyone"
+    $rights     = [System.Security.AccessControl.FileSystemRights]::FullControl
+    $inheritance= [System.Security.AccessControl.InheritanceFlags]"ContainerInherit,ObjectInherit"
+    $propagation= [System.Security.AccessControl.PropagationFlags]::None
+    $type       = [System.Security.AccessControl.AccessControlType]::Allow
+
+    $ace = New-Object System.Security.AccessControl.FileSystemAccessRule(
+        $identity, $rights, $inheritance, $propagation, $type
+    )
+
+    $acl.SetAccessRule($ace)
+    Set-Acl -Path $targetPath -AclObject $acl
+
+    Write-Host "ACE applied 窶・Everyone has Full Control on $targetPath (files + subfolders)." -ForegroundColor Green
+}
+catch {
+    Write-Host "ERROR: Failed to set ACL on D:\DATA 窶・$_" -ForegroundColor Red
     #exit 1
 }
 #endregion
 
 #region import data to sql server
-# ── Helper: attach files ──────────────────────────────────────────────────────
+# 笏笏 Helper: attach files 笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏
 function Invoke-AttachFiles {
     param ($SqlInstance, $DbName, $mdfFile, $ldfFile)
 
@@ -398,7 +427,7 @@ function Invoke-AttachTpccDatabase {
         [string]$DbName      = $DbName
     )
 
-    # ── Find MDF / LDF files ──────────────────────────────────────────────────
+    # 笏笏 Find MDF / LDF files 笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏
     Write-Host ""
     Write-Host "Attaching tpcc database to SQL Server..." -ForegroundColor Cyan
 
@@ -410,10 +439,10 @@ function Invoke-AttachTpccDatabase {
         return $false
     }
     if (-not $ldfFile) {
-        Write-Host "WARNING: No .ldf file found — will rebuild log." -ForegroundColor Yellow
+        Write-Host "WARNING: No .ldf file found 窶・will rebuild log." -ForegroundColor Yellow
     }
 
-    # ── Get SQL Instance ──────────────────────────────────────────────────────
+    # 笏笏 Get SQL Instance 笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏
     $script:SqlInstance = sqlcmd -L |
         Where-Object { $_ -notmatch "Servers:" -and $_.Trim() -ne "" } |
         ForEach-Object { $_.Trim() }
@@ -424,7 +453,7 @@ function Invoke-AttachTpccDatabase {
     }
     Write-Host "SQL Instance : $script:SqlInstance" -ForegroundColor Cyan
 
-    # ── Check database state first ────────────────────────────────────────────
+    # 笏笏 Check database state first 笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏
     $state = sqlcmd -S $script:SqlInstance -E -Q "
     SET NOCOUNT ON
     SELECT state_desc FROM sys.databases WHERE name = '$DbName'" 2>&1 |
@@ -437,10 +466,10 @@ function Invoke-AttachTpccDatabase {
 
     switch ($state) {
         "ONLINE" {
-            Write-Host "Database '$DbName' already attached and ONLINE — skipping." -ForegroundColor Green
+            Write-Host "Database '$DbName' already attached and ONLINE 窶・skipping." -ForegroundColor Green
         }
         "RECOVERY_PENDING" {
-            Write-Host "Database '$DbName' is RECOVERY_PENDING — re-attaching..." -ForegroundColor Yellow
+            Write-Host "Database '$DbName' is RECOVERY_PENDING 窶・re-attaching..." -ForegroundColor Yellow
             # Drop broken entry then re-attach
             sqlcmd -S $script:SqlInstance -E -Q "
             ALTER DATABASE [$DbName] SET OFFLINE WITH ROLLBACK IMMEDIATE;
@@ -448,25 +477,25 @@ function Invoke-AttachTpccDatabase {
             if (-not (Invoke-AttachFiles -SqlInstance $script:SqlInstance -DbName $DbName -mdfFile $mdfFile -ldfFile $ldfFile)) { return $false }
         }
         "OFFLINE" {
-            Write-Host "Database '$DbName' is OFFLINE — bringing online..." -ForegroundColor Yellow
+            Write-Host "Database '$DbName' is OFFLINE 窶・bringing online..." -ForegroundColor Yellow
             sqlcmd -S $script:SqlInstance -E -Q "ALTER DATABASE [$DbName] SET ONLINE;" 2>&1 | Out-Null
         }
         "SUSPECT" {
-            Write-Host "Database '$DbName' is SUSPECT — re-attaching..." -ForegroundColor Yellow
+            Write-Host "Database '$DbName' is SUSPECT 窶・re-attaching..." -ForegroundColor Yellow
             sqlcmd -S $script:SqlInstance -E -Q "DROP DATABASE [$DbName];" 2>&1 | Out-Null
             if (-not (Invoke-AttachFiles -SqlInstance $script:SqlInstance -DbName $DbName -mdfFile $mdfFile -ldfFile $ldfFile)) { return $false }
         }
         "NOT_FOUND" {
-            Write-Host "Database '$DbName' is not found — attaching..." -ForegroundColor Yellow
+            Write-Host "Database '$DbName' is not found 窶・attaching..." -ForegroundColor Yellow
             if (-not (Invoke-AttachFiles -SqlInstance $script:SqlInstance -DbName $DbName -mdfFile $mdfFile -ldfFile $ldfFile)) { return $false }
         }
         default {
-            Write-Host "Database '$DbName' not found — attaching..." -ForegroundColor Cyan
+            Write-Host "Database '$DbName' not found 窶・attaching..." -ForegroundColor Cyan
             if (-not (Invoke-AttachFiles -SqlInstance $script:SqlInstance -DbName $DbName -mdfFile $mdfFile -ldfFile $ldfFile)) { return $false }
         }
     }
 
-    # ── Final state verify ────────────────────────────────────────────────────
+    # 笏笏 Final state verify 笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏
     $finalState = sqlcmd -S $script:SqlInstance -E -Q "
     SET NOCOUNT ON
     SELECT state_desc FROM sys.databases WHERE name = '$DbName'" 2>&1 |
@@ -479,7 +508,7 @@ function Invoke-AttachTpccDatabase {
     }
     Write-Host "Database '$DbName' attached and ONLINE." -ForegroundColor Green
 
-    # ── Verify warehouse count ────────────────────────────────────────────────
+    # 笏笏 Verify warehouse count 笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏
     $whCount = sqlcmd -S $script:SqlInstance -E -Q "
     SET NOCOUNT ON
     SELECT COUNT(*) FROM $DbName.dbo.warehouse" 2>&1 |
@@ -491,7 +520,7 @@ function Invoke-AttachTpccDatabase {
     return $true
 }
 
-# ── Run ───────────────────────────────────────────────────────────────────────
+# 笏笏 Run 笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏
 Invoke-AttachTpccDatabase
 #endregion
 
@@ -541,7 +570,7 @@ function Clear-SqlErrorLog {
 
     Write-Host "Cycling SQL Server error log..." -ForegroundColor Cyan
     sqlcmd -S $SqlInstance -E -Q "EXEC sp_cycle_errorlog" | Out-Null
-    Write-Host "SQL error log cycled — fresh log ready." -ForegroundColor Green
+    Write-Host "SQL error log cycled 窶・fresh log ready." -ForegroundColor Green
 }
 
 function Run-HammerDB {
@@ -563,14 +592,14 @@ try {
         $exit = $LASTEXITCODE
     }
     catch {
-        Write-Log "HammerDB interrupted — cleaning up SQL Server..." "WARN"
+        Write-Log "HammerDB interrupted 窶・cleaning up SQL Server..." "WARN"
         $exit = -1
     }
     finally {
         Pop-Location
         Write-Plain "--- HammerDB output end VU $VU ---"
 
-        # ── Auto-recover DB after any interruption ────────────────────────
+        # 笏笏 Auto-recover DB after any interruption 笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏
         Write-Log "Checking database state after run..." "INFO"
         $state = sqlcmd -S $script:SqlInstance -E -Q "
         SET NOCOUNT ON
@@ -579,7 +608,7 @@ try {
             ForEach-Object { $_.Trim() }
 
         if ($state -ne "ONLINE") {
-            Write-Log "Database state is '$state' — attempting recovery..." "WARN"
+            Write-Log "Database state is '$state' 窶・attempting recovery..." "WARN"
             sqlcmd -S $script:SqlInstance -E -Q "
             ALTER DATABASE [$DbName] SET OFFLINE WITH ROLLBACK IMMEDIATE;
             DROP DATABASE [$DbName];" 2>&1 | Out-Null
@@ -601,9 +630,9 @@ try {
     return @{ ExitCode = $exit; SleepSec = $timing.SleepSec }
 }
 
-# ── Step 1: Check if sql path and tpcc database exists ────────────────────────────────────
+# 笏笏 Step 1: Check if sql path and tpcc database exists 笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏
 if ([string]::IsNullOrEmpty($script:SqlInstance)) {
-    Write-Log "WARNING: SqlInstance not set — re-detecting..." "WARN"
+    Write-Log "WARNING: SqlInstance not set 窶・re-detecting..." "WARN"
     $script:SqlInstance = sqlcmd -L |
         Where-Object { $_ -notmatch "Servers:" -and $_.Trim() -ne "" } |
         ForEach-Object { $_.Trim() } |
@@ -631,7 +660,7 @@ if ($dbExists -eq "1") {
 } 
 else {
 
-    Write-Log "Database '$DbName' not found — searching for $MdfName..." "WARN"
+    Write-Log "Database '$DbName' not found 窶・searching for $MdfName..." "WARN"
 
     $drives = Get-PSDrive -PSProvider FileSystem |
         Where-Object { $_.Root -match '^[A-Z]:\\$' } |
@@ -653,7 +682,7 @@ else {
                 $ldfPath = $ldfCandidate
                 Write-Log "Found log file: $ldfPath" "INFO"
             } else {
-                Write-Log "Log file not found — will rebuild log" "WARN"
+                Write-Log "Log file not found 窶・will rebuild log" "WARN"
             }
             break
         }
@@ -693,7 +722,7 @@ FOR ATTACH_REBUILD_LOG"
         ForEach-Object { $_.Trim() }
 
     if ($state -ne "ONLINE") {
-        Write-Log "Database state is '$state' — attach failed." "ERROR"
+        Write-Log "Database state is '$state' 窶・attach failed." "ERROR"
         #exit 1
     }
 
@@ -707,7 +736,7 @@ FOR ATTACH_REBUILD_LOG"
     Write-Log "Warehouse count : $whCount" "INFO"
 }
 
-# ── Step 2: choose NAS disk type  ─────────────────────────────────────────────────
+# 笏笏 Step 2: choose NAS disk type  笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏
 Write-Host ""
 Write-Host "Select storage type for timing adjustment:"
 Write-Host "  1. SSD"
@@ -721,14 +750,14 @@ $VUList     = @(1, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 60, 70, 80, 90, 100, 1
 switch ($diskChoice) {
     "1" {
         $global:HDD = $false
-        Write-Log "Storage type : SSD — standard timing, single pass" "INFO"
+        Write-Log "Storage type : SSD 窶・standard timing, single pass" "INFO"
     }
     "2" {
         $global:HDD = $true
         $VUList     = $VUList + $VUList
-        Write-Log "Storage type : HDD — 2x intervals, full sequence run twice" "INFO"
+        Write-Log "Storage type : HDD 窶・2x intervals, full sequence run twice" "INFO"
         Write-Host ""
-        Write-Host "WARNING: HDD mode — 46 steps, estimated ~24 hours." -ForegroundColor Yellow
+        Write-Host "WARNING: HDD mode 窶・46 steps, estimated ~24 hours." -ForegroundColor Yellow
         Write-Host ""
         $confirm = Read-Host "Continue? (Y/N)"
         if ($confirm -ne "Y") {
@@ -738,10 +767,10 @@ switch ($diskChoice) {
     }
     default {
         $global:HDD = $false
-        Write-Log "Invalid selection '$diskChoice' — defaulting to SSD" "WARN"
+        Write-Log "Invalid selection '$diskChoice' 窶・defaulting to SSD" "WARN"
     }
 }
-# ── Step 3: Run HammerDB test ─────────────────────────────────────────────────
+# 笏笏 Step 3: Run HammerDB test 笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏
 $totalSteps = $VUList.Count
 $stepDone   = 0
 $grandStart = Get-Date
@@ -781,7 +810,7 @@ foreach ($vu in $VUList) {
     }
     
     if ($result.ExitCode -ne 0) {
-        Write-Log "ERROR: Non-zero exit at VU $vu — stopping." "ERROR"
+        Write-Log "ERROR: Non-zero exit at VU $vu 窶・stopping." "ERROR"
         exit 1
     }
 
@@ -800,7 +829,7 @@ Write-Plain "+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-"
 
 #endregion
 
-# ── Popup completion message ──────────────────────────────────────────────────
+# 笏笏 Popup completion message 笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏
 $completedAt = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
 [System.Windows.Forms.MessageBox]::Show(
     "All HammerDB tests completed successfully.`n`nCompleted at : $completedAt`nTotal elapsed : $($totalElapsed.ToString('hh\:mm\:ss'))",
