@@ -36,16 +36,15 @@ Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy Bypass -Force
 [Notice] If not found NAS in /Volumes/, Command+K in Finder, then input "smb:\\\\[NAS IP]", it will mount to /Volumes/ again.
 
 ## Linux
-1. Edit nas_config.txt to complete necessary info. (NAS_IP, SHARE_NAME, NAS_USER, NAS_PASS)
-2. Open terminal and cd to tool path
-3. sed -i 's/\r$//' ./transfer_tool.sh
-4. chmod +x transfer_tool.sh
-5.  ./transfer_tool.sh to start test
-6.  Destination Selection:
+1. Open terminal and cd to tool path
+2. sed -i 's/\r$//' ./transfer_tool.sh
+3. chmod +x transfer_tool.sh
+4.  ./transfer_tool.sh to start test
+5.  Destination Selection:
     The script will detect mounted volumes (macOS) or SMB shares (Linux). Select the corresponding index number.
-7.  select sources folder for write/read test
+6.  select sources folder for write/read test
     - Pick your source folder when the dialog appears.
     - Choose Yes when asked "Add another folder?" to queue more tests, or No to start.
-8. Review Results: A file named WriteReadLog_YYYYMMDD_HHmm.csv will be generated in the script's directory.
+7. Review Results: A file named WriteReadLog_YYYYMMDD_HHmm.csv will be generated in the script's directory.
 
 
