@@ -9,7 +9,7 @@ $bakupLog    = "$env:USERPROFILE\Desktop\_backuplogs"
 if(!(test-path $bakupLog)){
 New-Item -ItemType Directory -Path $bakupLog|Out-Null
 }
-Get-ChildItem "$env:USERPROFILE\Desktop\hammerdb_*.log"|Move-Item -Destination $bakupLog -Force
+Get-ChildItem "$env:USERPROFILE\Desktop\hammerdb*.log"|Move-Item -Destination $bakupLog -Force
 
 Start-Transcript -Path $TranscriptLog -Append
 
@@ -397,6 +397,9 @@ catch {
 #endregion
 
 #region import data to sql server
+# ── Get SQL Instance ──────────────────────────────────────────────────────
+$localSqlIns = "$([System.Net.Dns]::GetHostName())\TPCC"
+Write-Host "SQL Instance : $localSqlIns" -ForegroundColor Cyan
 # ── Helper: attach files ──────────────────────────────────────────────────────
 function Invoke-AttachFiles {
     param ($SqlInstance, $DbName, $mdfFile, $ldfFile)
@@ -413,7 +416,7 @@ function Invoke-AttachFiles {
         FOR ATTACH_REBUILD_LOG"
     }
 
-    $attachResult = sqlcmd -S $script:SqlInstance -E -Q $attachSql 2>&1
+    $attachResult = sqlcmd -S $SqlInstance -E -Q $attachSql 2>&1
     if ($attachResult -match "Error|error|failed|Failed") {
         Write-Host "ERROR: Attach failed." -ForegroundColor Red
         Write-Host $attachResult -ForegroundColor Red
@@ -421,6 +424,7 @@ function Invoke-AttachFiles {
     }
     return $true
 }
+
 function Invoke-AttachTpccDatabase {
     param (
         [string]$DataPath    = $DataPath,
@@ -442,27 +446,21 @@ function Invoke-AttachTpccDatabase {
         Write-Host "WARNING: No .ldf file found — will rebuild log." -ForegroundColor Yellow
     }
 
-    # ── Get SQL Instance ──────────────────────────────────────────────────────
-    $script:SqlInstance = sqlcmd -L |
-        Where-Object { $_ -notmatch "Servers:" -and $_.Trim() -ne "" } |
-        ForEach-Object { $_.Trim() }
+    #active sql services
+    Get-Service -Name "*SQL*" | Where-Object {$_.Status -eq "Stopped"} | Start-Service
+    Get-Service -Name "*SQL*" | Set-Service -StartupType Automatic
 
-    if (-not $script:SqlInstance) {
-        Write-Host "ERROR: No SQL Server instance found." -ForegroundColor Red
-        return $false
-    }
-    Write-Host "SQL Instance : $script:SqlInstance" -ForegroundColor Cyan
-
-    # ── Check database state first ────────────────────────────────────────────
-    $state = sqlcmd -S $script:SqlInstance -E -Q "
+     # ── Get SQL status ──────────────────────────────────────────────────────  
+    [string[]]$sqlOutput = sqlcmd -S $localSqlIns -E -Q "
     SET NOCOUNT ON
-    SELECT state_desc FROM sys.databases WHERE name = '$DbName'" 2>&1 |
-        Where-Object { $_ -match '[A-Z]' -and $_ -notmatch 'state_desc|---' } |
+    SELECT state_desc FROM sys.databases WHERE name = '$DbName'" 2>&1
+    $state = $sqlOutput |
+        Where-Object { $_ -match '[A-Z]' -and $_ -notmatch 'state_desc|---|Error|failed' } |
         ForEach-Object { $_.Trim() }
 
     if ([string]::IsNullOrWhiteSpace($state)) {
         $state = "NOT_FOUND" 
-       }
+    }
 
     switch ($state) {
         "ONLINE" {
@@ -471,36 +469,53 @@ function Invoke-AttachTpccDatabase {
         "RECOVERY_PENDING" {
             Write-Host "Database '$DbName' is RECOVERY_PENDING — re-attaching..." -ForegroundColor Yellow
             # Drop broken entry then re-attach
-            sqlcmd -S $script:SqlInstance -E -Q "
+            sqlcmd -S $localSqlIns -E -Q "
             ALTER DATABASE [$DbName] SET OFFLINE WITH ROLLBACK IMMEDIATE;
             DROP DATABASE [$DbName];" 2>&1 | Out-Null
-            if (-not (Invoke-AttachFiles -SqlInstance $script:SqlInstance -DbName $DbName -mdfFile $mdfFile -ldfFile $ldfFile)) { return $false }
+            if (-not (Invoke-AttachFiles -SqlInstance $localSqlIns -DbName $DbName -mdfFile $mdfFile -ldfFile $ldfFile)) { return $false }
         }
         "OFFLINE" {
             Write-Host "Database '$DbName' is OFFLINE — bringing online..." -ForegroundColor Yellow
-            sqlcmd -S $script:SqlInstance -E -Q "ALTER DATABASE [$DbName] SET ONLINE;" 2>&1 | Out-Null
+            sqlcmd -S $localSqlIns -E -Q "ALTER DATABASE [$DbName] SET ONLINE;" 2>&1 | Out-Null
         }
         "SUSPECT" {
             Write-Host "Database '$DbName' is SUSPECT — re-attaching..." -ForegroundColor Yellow
-            sqlcmd -S $script:SqlInstance -E -Q "DROP DATABASE [$DbName];" 2>&1 | Out-Null
-            if (-not (Invoke-AttachFiles -SqlInstance $script:SqlInstance -DbName $DbName -mdfFile $mdfFile -ldfFile $ldfFile)) { return $false }
+            sqlcmd -S $localSqlIns -E -Q "DROP DATABASE [$DbName];" 2>&1 | Out-Null
+            if (-not (Invoke-AttachFiles -SqlInstance $localSqlIns -DbName $DbName -mdfFile $mdfFile -ldfFile $ldfFile)) { return $false }
         }
         "NOT_FOUND" {
             Write-Host "Database '$DbName' is not found — attaching..." -ForegroundColor Yellow
-            if (-not (Invoke-AttachFiles -SqlInstance $script:SqlInstance -DbName $DbName -mdfFile $mdfFile -ldfFile $ldfFile)) { return $false }
+            if (-not (Invoke-AttachFiles -SqlInstance $localSqlIns -DbName $DbName -mdfFile $mdfFile -ldfFile $ldfFile)) { return $false }
         }
         default {
             Write-Host "Database '$DbName' not found — attaching..." -ForegroundColor Cyan
-            if (-not (Invoke-AttachFiles -SqlInstance $script:SqlInstance -DbName $DbName -mdfFile $mdfFile -ldfFile $ldfFile)) { return $false }
+            if (-not (Invoke-AttachFiles -SqlInstance $localSqlIns -DbName $DbName -mdfFile $mdfFile -ldfFile $ldfFile)) { return $false }
         }
     }
 
     # ── Final state verify ────────────────────────────────────────────────────
-    $finalState = sqlcmd -S $script:SqlInstance -E -Q "
-    SET NOCOUNT ON
-    SELECT state_desc FROM sys.databases WHERE name = '$DbName'" 2>&1 |
-        Where-Object { $_ -match '[A-Z]' -and $_ -notmatch 'state_desc|---' } |
-        ForEach-Object { $_.Trim() }
+    $finalState = $null
+    $retryCount = 0
+    $maxRetry   = 10
+
+    while ($retryCount -lt $maxRetry) {
+        [string[]]$fsOutput = sqlcmd -S $localSqlIns -E -Q "
+        SET NOCOUNT ON
+        SELECT ISNULL(
+            (SELECT state_desc FROM sys.databases WHERE name = '$DbName'),
+            'NOT_FOUND'
+        )" 2>&1
+        $finalState = $fsOutput |
+            Where-Object { $_.Trim() -match '^(ONLINE|OFFLINE|SUSPECT|RECOVERY_PENDING|RESTORING|RECOVERING|NOT_FOUND)$' } |
+            Select-Object -First 1 |
+            ForEach-Object { $_.Trim() }
+
+        if ($finalState -eq "ONLINE") { break }
+
+        $retryCount++
+        Write-Host "  Waiting for DB... attempt $retryCount/$maxRetry (state: '$finalState')" -ForegroundColor Yellow
+        Start-Sleep -Seconds 5
+    }
 
     if ($finalState -ne "ONLINE") {
         Write-Host "ERROR: Database state is '$finalState' after attach." -ForegroundColor Red
@@ -509,7 +524,7 @@ function Invoke-AttachTpccDatabase {
     Write-Host "Database '$DbName' attached and ONLINE." -ForegroundColor Green
 
     # ── Verify warehouse count ────────────────────────────────────────────────
-    $whCount = sqlcmd -S $script:SqlInstance -E -Q "
+    $whCount = sqlcmd -S $localSqlIns -E -Q "
     SET NOCOUNT ON
     SELECT COUNT(*) FROM $DbName.dbo.warehouse" 2>&1 |
         Where-Object { $_ -match '^\s*\d+\s*$' } |
@@ -530,10 +545,10 @@ Stop-Transcript
 $MdfName      = "tpcc.mdf"
 $LdfName      = "tpcc_log.ldf"
 $HammerDBHome = "C:\Program Files\HammerDB-4.8"
-$TclScript    = "./scripts/tcl/mssqls/tprocc/mssqls_tprocc_run_vu.tcl"
 $LogStamp     = Get-Date -Format "yyyyMMdd_HHmmss"
 $OurLog       = "$env:USERPROFILE\Desktop\hammerdb_${LogStamp}.log"
-$logPath = "C:\Program Files\Microsoft SQL Server\MSSQL16.TPCC\MSSQL\Log\ERRORLOG"
+$logPath      = "C:\Program Files\Microsoft SQL Server\MSSQL16.TPCC\MSSQL\Log\ERRORLOG"
+$Warehouses   = 2000   # ← change to 20 for small test DB
 
 function Write-Log {
     param([string]$Message, [string]$Level = "INFO")
@@ -553,6 +568,101 @@ function Write-HammerLine {
     param([string]$Line)
     Write-Host $Line
     Add-Content -Path $OurLog    -Value $Line
+}
+
+# ── Generate mssqls_tprocc_run_vu.tcl ────────────────────────────────────────
+function New-HammerDBRunVuScript {
+    param(
+        [string]$OutputPath  = "C:\Program Files\HammerDB-4.8\scripts\tcl\mssqls\tprocc\mssqls_tprocc_run_vu.tcl",
+        [string]$Server      = "",
+        [string]$Database    = "tpcc",
+        [string]$UID         = "tpcc",
+        [string]$PWD         = "Sql2022!",
+        [int]   $Warehouses  = 2000
+    )
+
+    Write-Log "Generating TCL run_vu script for server: $Server" "INFO"
+
+    $tclHeader = @"
+#!/bin/tclsh
+# mssqls_tprocc_run_vu.tcl
+# Reads VU_COUNT from environment variable set by autopilot_run.ps1
+
+set tmpdir   `$::env(TMP)
+set vu_count `$::env(VU_COUNT)
+set rampup   `$::env(VU_RAMPUP)
+set duration `$::env(VU_DURATION)
+puts "SETTING CONFIGURATION"
+puts "Virtual Users : `$vu_count"
+
+dbset db mssqls
+dbset bm TPROC-C
+
+# -- Connection -----------------------------------------------
+diset connection mssqls_server             {$Server}
+diset connection mssqls_linux_server       {localhost}
+diset connection mssqls_tcp                false
+diset connection mssqls_port               1433
+diset connection mssqls_azure              false
+diset connection mssqls_authentication     sql
+diset connection mssqls_linux_authent      sql
+diset connection mssqls_odbc_driver        {ODBC Driver 18 for SQL Server}
+diset connection mssqls_linux_odbc         {ODBC Driver 18 for SQL Server}
+diset connection mssqls_uid                $UID
+diset connection mssqls_pass               $PWD
+diset connection mssqls_encrypt_connection true
+diset connection mssqls_trust_server_cert  true
+
+# -- TPC-C Workload -------------------------------------------
+diset tpcc mssqls_count_ware        $Warehouses
+"@
+
+    $tclBody = @'
+diset tpcc mssqls_num_vu            $vu_count
+diset tpcc mssqls_dbase             tpcc
+diset tpcc mssqls_imdb              false
+diset tpcc mssqls_durability        SCHEMA_AND_DATA
+diset tpcc mssqls_driver            timed
+diset tpcc mssqls_total_iterations  10000000
+diset tpcc mssqls_rampup            $rampup
+diset tpcc mssqls_duration          $duration
+diset tpcc mssqls_raiseerror        false
+diset tpcc mssqls_keyandthink       false
+diset tpcc mssqls_checkpoint        true
+diset tpcc mssqls_timeprofile       true
+diset tpcc mssqls_allwarehouse      false
+diset tpcc mssqls_connect_pool      false
+
+loadscript
+puts "TEST STARTED"
+
+vuset vu $vu_count
+vucreate
+tcstart
+tcstatus
+
+set jobid [ vurun ]
+
+vudestroy
+tcstop
+
+puts "TEST COMPLETE"
+
+# Save job id — one file per VU count for later result retrieval
+set of [ open $tmpdir/mssqls_tprocc_vu${vu_count}.txt w ]
+puts $of $jobid
+close $of
+'@
+
+    try {
+        ($tclHeader + "`n" + $tclBody) |
+            Out-File -FilePath $OutputPath -Encoding ascii -Force
+        Write-Log "TCL script created : $OutputPath" "INFO"
+        return $true
+    } catch {
+        Write-Log "ERROR: Failed to write TCL script - $_" "ERROR"
+        return $false
+    }
 }
 
 function Get-TestTiming {
@@ -601,20 +711,28 @@ try {
 
         # ── Auto-recover DB after any interruption ────────────────────────
         Write-Log "Checking database state after run..." "INFO"
-        $state = sqlcmd -S $script:SqlInstance -E -Q "
+
+        $SqlInstance = "$([System.Net.Dns]::GetHostName())\TPCC"
+        [string[]]$sqlOutput = sqlcmd -S $SqlInstance -E -Q "
         SET NOCOUNT ON
-        SELECT state_desc FROM sys.databases WHERE name = '$DbName'" 2>&1 |
-            Where-Object { $_ -match '[A-Z]' -and $_ -notmatch 'state_desc|---' } |
+        SELECT state_desc FROM sys.databases WHERE name = '$DbName'" 2>&1
+        $state = $sqlOutput |
+            Where-Object { $_ -match '[A-Z]' -and $_ -notmatch 'state_desc|---|Error|failed' } |
             ForEach-Object { $_.Trim() }
+
+        if ([string]::IsNullOrWhiteSpace($state)) {
+            $state = "NOT_FOUND" 
+        }
+
 
         if ($state -ne "ONLINE") {
             Write-Log "Database state is '$state' — attempting recovery..." "WARN"
-            sqlcmd -S $script:SqlInstance -E -Q "
+            sqlcmd -S $SqlInstance -E -Q "
             ALTER DATABASE [$DbName] SET OFFLINE WITH ROLLBACK IMMEDIATE;
             DROP DATABASE [$DbName];" 2>&1 | Out-Null
 
             # Re-attach
-            sqlcmd -S $script:SqlInstance -E -Q "
+            sqlcmd -S $SqlInstance -E -Q "
             CREATE DATABASE [$DbName] ON
                 (FILENAME = 'D:\DATA\tpcc.mdf')
             LOG ON
@@ -631,16 +749,28 @@ try {
 }
 
 # ── Step 1: Check if sql path and tpcc database exists ────────────────────────────────────
-if ([string]::IsNullOrEmpty($script:SqlInstance)) {
+if ([string]::IsNullOrEmpty($localSqlIns)) {
     Write-Log "WARNING: SqlInstance not set — re-detecting..." "WARN"
-    $script:SqlInstance = sqlcmd -L |
+    $localSqlIns = sqlcmd -L |
         Where-Object { $_ -notmatch "Servers:" -and $_.Trim() -ne "" } |
         ForEach-Object { $_.Trim() } |
         Select-Object -First 1
 }
-Write-Log "SQL Instance : $script:SqlInstance" "INFO"
-Write-Log "Checking if database '$DbName' exists on $script:SqlInstance..."
-$dbExists = sqlcmd -S $script:SqlInstance -E -Q "
+Write-Log "SQL Instance : $localSqlIns" "INFO"
+
+# ── Auto-generate TCL run_vu script ──────────────────────────────────────────
+$TclServer = $localSqlIns  # use same detected instance
+$TclScript = "$HammerDBHome\scripts\tcl\mssqls\tprocc\mssqls_tprocc_run_vu.tcl"
+
+Write-Log "Generating TCL script for server: $TclServer" "INFO"
+New-HammerDBRunVuScript -OutputPath $TclScript `
+                         -Server     $TclServer `
+                         -Database   $DbName `
+                         -UID        "tpcc" `
+                         -PWD        "Sql2022!" `
+                         -Warehouses $Warehouses
+Write-Log "Checking if database '$DbName' exists on $localSqlIns..."
+$dbExists = sqlcmd -S $localSqlIns -E -Q "
 SET NOCOUNT ON
 SELECT COUNT(*) FROM sys.databases WHERE name = '$DbName'" 2>&1 |
     Where-Object { $_ -match '^\s*\d+\s*$' } |
@@ -649,7 +779,7 @@ SELECT COUNT(*) FROM sys.databases WHERE name = '$DbName'" 2>&1 |
 if ($dbExists -eq "1") {
     Write-Log "Database '$DbName' already exists." "INFO"
 
-    $whCount = sqlcmd -S $script:SqlInstance -E -Q "
+    $whCount = sqlcmd -S $localSqlIns -E -Q "
     SET NOCOUNT ON
     SELECT COUNT(*) FROM $DbName.dbo.warehouse" 2>&1 |
         Where-Object { $_ -match '^\s*\d+\s*$' } |
@@ -709,13 +839,13 @@ FOR ATTACH_REBUILD_LOG"
     }
 
     Write-Log "Attaching '$DbName' from $mdfPath ..."
-    $attachResult = sqlcmd -S $script:SqlInstance -E -Q $attachSql 2>&1
+    $attachResult = sqlcmd -S $localSqlIns -E -Q $attachSql 2>&1
     if ($attachResult -match "Error|error|failed|Failed") {
         Write-Log "Attach failed: $attachResult" "ERROR"
         #exit 1
     }
 
-    $state = sqlcmd -S $script:SqlInstance -E -Q "
+    $state = sqlcmd -S $localSqlIns -E -Q "
     SET NOCOUNT ON
     SELECT state_desc FROM sys.databases WHERE name = '$DbName'" 2>&1 |
         Where-Object { $_ -match '[A-Z]' -and $_ -notmatch 'state_desc|---' } |
@@ -726,7 +856,7 @@ FOR ATTACH_REBUILD_LOG"
         #exit 1
     }
 
-    $whCount = sqlcmd -S $script:SqlInstance -E -Q "
+    $whCount = sqlcmd -S $localSqlIns -E -Q "
     SET NOCOUNT ON
     SELECT COUNT(*) FROM $DbName.dbo.warehouse" 2>&1 |
         Where-Object { $_ -match '^\s*\d+\s*$' } |
