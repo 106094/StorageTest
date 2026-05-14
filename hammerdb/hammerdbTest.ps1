@@ -9,7 +9,7 @@ $bakupLog    = "$env:USERPROFILE\Desktop\_backuplogs"
 if(!(test-path $bakupLog)){
 New-Item -ItemType Directory -Path $bakupLog|Out-Null
 }
-Get-ChildItem "$env:USERPROFILE\Desktop\hammerdb*.log"|Move-Item -Destination $bakupLog -Force
+Get-ChildItem "$env:USERPROFILE\Desktop\hammerdb_*.log"|Move-Item -Destination $bakupLog -Force
 
 Start-Transcript -Path $TranscriptLog -Append
 
@@ -273,6 +273,44 @@ Get-Volume -DriveLetter "D" |
         @{N='Size_GB';E={[math]::Round($_.Size/1GB,1)}} |
     Format-Table -AutoSize
 
+#endregion
+
+#region ── Storage type selection ────────────────────────────────────────────
+Write-Host ""
+Write-Host "========================================================"
+Write-Host "Select storage type for timing adjustment:"
+Write-Host "  1. SSD"
+Write-Host "  2. HDD"
+Write-Host "========================================================"
+Write-Host ""
+
+$diskChoice = Read-Host "Enter 1 or 2"
+$VUList     = @(1, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 60, 70, 80, 90, 100, 120, 140, 160, 180, 200, 225, 250)
+
+switch ($diskChoice) {
+    "1" {
+        $global:HDD = $false
+        Write-Host "Storage type : SSD — standard timing, single pass" -ForegroundColor Green
+    }
+    "2" {
+        $global:HDD = $true
+        $VUList     = $VUList + $VUList
+        Write-Host ""
+        Write-Host "WARNING: HDD mode — 46 steps, estimated ~24 hours." -ForegroundColor Yellow
+        Write-Host ""
+        $confirm = Read-Host "Continue? (Y/N)"
+        if ($confirm -ne "Y") {
+            Write-Host "User cancelled." -ForegroundColor Yellow
+            exit 0
+        }
+        Write-Host "Storage type : HDD — 2x intervals, full sequence run twice" -ForegroundColor Green
+    }
+    default {
+        $global:HDD = $false
+        Write-Host "Invalid selection '$diskChoice' — defaulting to SSD" -ForegroundColor Yellow
+    }
+}
+Write-Host "========================================================"
 #endregion
 
 #region copy DB
@@ -866,47 +904,14 @@ FOR ATTACH_REBUILD_LOG"
     Write-Log "Warehouse count : $whCount" "INFO"
 }
 
-# ── Step 2: choose NAS disk type  ─────────────────────────────────────────────────
-Write-Host ""
-Write-Host "Select storage type for timing adjustment:"
-Write-Host "  1. SSD"
-Write-Host "  2. HDD"
-Write-Host ""
-
-$diskChoice = Read-Host "Enter 1 or 2"
-
-$VUList     = @(1, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 60, 70, 80, 90, 100, 120, 140, 160, 180, 200, 225, 250)
-
-switch ($diskChoice) {
-    "1" {
-        $global:HDD = $false
-        Write-Log "Storage type : SSD — standard timing, single pass" "INFO"
-    }
-    "2" {
-        $global:HDD = $true
-        $VUList     = $VUList + $VUList
-        Write-Log "Storage type : HDD — 2x intervals, full sequence run twice" "INFO"
-        Write-Host ""
-        Write-Host "WARNING: HDD mode — 46 steps, estimated ~24 hours." -ForegroundColor Yellow
-        Write-Host ""
-        $confirm = Read-Host "Continue? (Y/N)"
-        if ($confirm -ne "Y") {
-            Write-Log "User cancelled." "WARN"
-            exit 0
-        }
-    }
-    default {
-        $global:HDD = $false
-        Write-Log "Invalid selection '$diskChoice' — defaulting to SSD" "WARN"
-    }
-}
-# ── Step 3: Run HammerDB test ─────────────────────────────────────────────────
+# ── Step 2: Run HammerDB test ─────────────────────────────────────────────────
 $totalSteps = $VUList.Count
 $stepDone   = 0
 $grandStart = Get-Date
 
 Write-Plain "========================================================"
 Write-Log   "HammerDB TEST RUN Started"
+Write-Log   "Storage Type  : $(if ($global:HDD) { 'HDD (2x sleep intervals)' } else { 'SSD (standard intervals)' })" "INFO"
 Write-Plain "TCL Script    : $TclScript"
 Write-Plain "Our Log       : $OurLog"
 Write-Plain "VU List       : $($VUList -join ', ')"
