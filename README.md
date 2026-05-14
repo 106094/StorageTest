@@ -27,16 +27,8 @@
 7. Review results: a CSV named `WriteReadLog_YYYYMMDD_HHmm.csv` will be created in the same folder as the script.
 
 ---
-### Prerequisites
-- Edit `nas_config.txt` file in the same folder as the script with the following content:
-  ```
-  NAS_IP=192.168.x.x
-  SHARE_NAME=your_share
-  NAS_USER=your_username
-  NAS_PASS=your_password
-  ```
+
 ## Mac
-### Steps
 1. Open Terminal and `cd` to the tool path.
 2. Strip Windows line endings:
    ```
