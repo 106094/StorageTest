@@ -735,7 +735,7 @@ function Run-HammerDB {
     Push-Location $HammerDBHome
     $exit = 0
 try {
-        cmd /c "`"$HammerDBHome\hammerdbcli.bat`" auto $TclScript" 2>&1 | 
+        cmd /c "`"$HammerDBHome\hammerdbcli.bat`" auto `"$TclScript`"" 2>&1 | 
             ForEach-Object { Write-HammerLine $_ }
         $exit = $LASTEXITCODE
     }
