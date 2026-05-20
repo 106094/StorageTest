@@ -1,7 +1,307 @@
-﻿Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy Bypass -Force
+Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy Bypass -Force
 Add-Type -AssemblyName System.Windows.Forms
 $transcriptPath = Join-Path $PSScriptRoot "log$(get-date -format "_yyMMdd-HHmm").txt"
 Start-Transcript -Path $transcriptPath -Append
+#region UI
+Add-Type -AssemblyName PresentationFramework
+Add-Type -AssemblyName PresentationCore
+Add-Type -AssemblyName WindowsBase
+
+[xml]$xaml = @"
+<Window
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="VDBench Settings"
+    Width="420"
+    Height="500"
+    WindowStartupLocation="CenterScreen"
+    ResizeMode="NoResize"
+    Background="#1E1E2E">
+
+    <Window.Resources>
+        <!-- TextBox Style -->
+        <Style x:Key="InputBox" TargetType="TextBox">
+            <Setter Property="Background" Value="#2A2A3E"/>
+            <Setter Property="Foreground" Value="#CDD6F4"/>
+            <Setter Property="BorderBrush" Value="#45475A"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="8,5"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="FontFamily" Value="Consolas"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="Height" Value="32"/>
+            <Setter Property="CaretBrush" Value="#89B4FA"/>
+            <Style.Triggers>
+                <Trigger Property="IsFocused" Value="True">
+                    <Setter Property="BorderBrush" Value="#89B4FA"/>
+                    <Setter Property="Background" Value="#313244"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <!-- Label Style -->
+        <Style x:Key="FieldLabel" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="#A6ADC8"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="FontFamily" Value="Segoe UI"/>
+            <Setter Property="Margin" Value="0,0,0,4"/>
+        </Style>
+
+        <!-- CheckBox Style -->
+        <Style x:Key="ModernCheck" TargetType="CheckBox">
+            <Setter Property="Foreground" Value="#CDD6F4"/>
+            <Setter Property="FontSize" Value="12.5"/>
+            <Setter Property="FontFamily" Value="Consolas"/>
+            <Setter Property="Margin" Value="0,4,0,4"/>
+            <Setter Property="Cursor" Value="Hand"/>
+        </Style>
+
+        <!-- Primary Button Style -->
+        <Style x:Key="DoneBtn" TargetType="Button">
+            <Setter Property="Background" Value="#89B4FA"/>
+            <Setter Property="Foreground" Value="#1E1E2E"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="FontFamily" Value="Segoe UI"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="24,8"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}"
+                                CornerRadius="6"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background" Value="#B4CDFF"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter Property="Background" Value="#6A9FEA"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Cancel Button Style -->
+        <Style x:Key="CancelBtn" TargetType="Button">
+            <Setter Property="Background" Value="#313244"/>
+            <Setter Property="Foreground" Value="#CDD6F4"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="FontFamily" Value="Segoe UI"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="BorderBrush" Value="#45475A"/>
+            <Setter Property="Padding" Value="24,8"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="6"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background" Value="#45475A"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter Property="Background" Value="#585B70"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
+    <Grid Margin="28,24,28,24">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="16"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="16"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="16"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Title -->
+        <StackPanel Grid.Row="0">
+            <TextBlock Text="VDBench Settings"
+                       Foreground="#CDD6F4"
+                       FontSize="20"
+                       FontWeight="Bold"
+                       FontFamily="Segoe UI"/>
+            <Rectangle Height="1" Fill="#313244" Margin="0,10,0,0"/>
+        </StackPanel>
+
+        <!-- Loop -->
+        <StackPanel Grid.Row="2">
+            <TextBlock Text="Loop" Style="{StaticResource FieldLabel}"/>
+            <TextBox x:Name="TxtLoop"
+                     Text="1"
+                     Style="{StaticResource InputBox}"
+                     Width="120"
+                     HorizontalAlignment="Left"
+                     ToolTip="Number of loops to run"/>
+        </StackPanel>
+
+        <!-- Wait Time -->
+        <StackPanel Grid.Row="4">
+            <TextBlock Text="Wait Time (min) after FIO" Style="{StaticResource FieldLabel}"/>
+            <TextBox x:Name="TxtWaitTime"
+                     Text="240"
+                     Style="{StaticResource InputBox}"
+                     Width="120"
+                     HorizontalAlignment="Left"
+                     ToolTip="Wait time in minutes after FIO completes"/>
+        </StackPanel>
+
+        <!-- Checkboxes -->
+        <StackPanel Grid.Row="6">
+            <TextBlock Text="Test Profiles" Style="{StaticResource FieldLabel}" Margin="0,0,0,8"/>
+            <Border Background="#2A2A3E" BorderBrush="#45475A" BorderThickness="1" CornerRadius="6" Padding="14,10">
+                <StackPanel>
+                    <CheckBox x:Name="ChkRR4k"   Content="Random_Read_4k_128"    Style="{StaticResource ModernCheck}" IsChecked="True"/>
+                    <CheckBox x:Name="ChkRW4k"   Content="Random_Write_4k_64"    Style="{StaticResource ModernCheck}" IsChecked="True"/>
+                    <CheckBox x:Name="ChkSR64k"  Content="Sequential_Read_64k_16" Style="{StaticResource ModernCheck}" IsChecked="True"/>
+                    <CheckBox x:Name="ChkSW64k"  Content="Sequential_Write_64k_8" Style="{StaticResource ModernCheck}" IsChecked="True"/>
+                </StackPanel>
+            </Border>
+        </StackPanel>
+
+        <!-- Buttons -->
+        <StackPanel Grid.Row="8" Orientation="Horizontal" HorizontalAlignment="Right">
+            <Button x:Name="BtnCancel" Content="Cancel" Style="{StaticResource CancelBtn}" Margin="0,0,10,0"/>
+            <Button x:Name="BtnDone"   Content="Done"   Style="{StaticResource DoneBtn}"/>
+        </StackPanel>
+    </Grid>
+</Window>
+"@
+
+# ── Build Window ──────────────────────────────────────────────────────────────
+$reader   = [System.Xml.XmlNodeReader]::new($xaml)
+$window   = [Windows.Markup.XamlReader]::Load($reader)
+
+$txtLoop      = $window.FindName("TxtLoop")
+$txtWaitTime  = $window.FindName("TxtWaitTime")
+$chkRR4k      = $window.FindName("ChkRR4k")
+$chkRW4k      = $window.FindName("ChkRW4k")
+$chkSR64k     = $window.FindName("ChkSR64k")
+$chkSW64k     = $window.FindName("ChkSW64k")
+$btnCancel    = $window.FindName("BtnCancel")
+$btnDone      = $window.FindName("BtnDone")
+
+# ── Numeric-only validation ───────────────────────────────────────────────────
+$numericFilter = {
+    param($sender, $e)
+    $e.Handled = ($e.Text -notmatch '^\d$')
+}
+$txtLoop.Add_PreviewTextInput($numericFilter)
+$txtWaitTime.Add_PreviewTextInput($numericFilter)
+
+# Block paste of non-numeric content via TextChanged (strip non-digits after any change)
+$numericSanitize = {
+    param($sender, $e)
+    $clean = $sender.Text -replace '\D', ''
+    if ($sender.Text -ne $clean) {
+        $caret = $sender.CaretIndex
+        $sender.Text = $clean
+        $sender.CaretIndex = [Math]::Min($caret, $clean.Length)
+    }
+}
+$txtLoop.Add_TextChanged($numericSanitize)
+$txtWaitTime.Add_TextChanged($numericSanitize)
+
+# ── Result tracking ───────────────────────────────────────────────────────────
+$script:Result = $null
+
+# ── Cancel / X button ─────────────────────────────────────────────────────────
+$btnCancel.Add_Click({ $window.Close() })
+$window.Add_Closing({
+    if ($null -eq $script:Result) {
+        Write-Host "User cancelled. Exiting." -ForegroundColor Yellow
+        # exit 0   # Uncomment to terminate the host process on cancel
+    }
+})
+
+# ── Done button ───────────────────────────────────────────────────────────────
+$btnDone.Add_Click({
+    # Validate Loop
+    $loopVal = $txtLoop.Text.Trim()
+    if ($loopVal -eq '' -or -not ($loopVal -match '^\d+$')) {
+        [System.Windows.MessageBox]::Show(
+            "Loop must be a positive integer.",
+            "Validation Error",
+            [System.Windows.MessageBoxButton]::OK,
+            [System.Windows.MessageBoxImage]::Warning)
+        return
+    }
+
+    # Validate Wait Time
+    $waitVal = $txtWaitTime.Text.Trim()
+    if ($waitVal -eq '' -or -not ($waitVal -match '^\d+$')) {
+        [System.Windows.MessageBox]::Show(
+            "Wait Time must be a positive integer.",
+            "Validation Error",
+            [System.Windows.MessageBoxButton]::OK,
+            [System.Windows.MessageBoxImage]::Warning)
+        return
+    }
+
+    # Collect selected profiles
+    $profiles = @()
+    if ($chkRR4k.IsChecked)  { $profiles += "Random_Read_4k_128" }
+    if ($chkRW4k.IsChecked)  { $profiles += "Random_Write_4k_64" }
+    if ($chkSR64k.IsChecked) { $profiles += "Sequential_Read_64k_16" }
+    if ($chkSW64k.IsChecked) { $profiles += "Sequential_Write_64k_8" }
+
+    if ($profiles.Count -eq 0) {
+        [System.Windows.MessageBox]::Show(
+            "Please select at least one test profile.",
+            "Validation Error",
+            [System.Windows.MessageBoxButton]::OK,
+            [System.Windows.MessageBoxImage]::Warning)
+        return
+    }
+
+    $script:Result = [PSCustomObject]@{
+        Loop          = [int]$loopVal
+        WaitTimeMin   = [int]$waitVal
+        TestProfiles  = $profiles
+    }
+
+    $window.Close()
+})
+
+# ── Show dialog ───────────────────────────────────────────────────────────────
+$window.ShowDialog() | Out-Null
+
+# ── Use result downstream ─────────────────────────────────────────────────────
+if ($null -eq $script:Result -or $script:Result.TestProfiles.count -eq 0) {
+    Write-Host "Cancelled — no settings returned." -ForegroundColor Yellow
+    exit 0
+}
+
+Write-Host "`n=== VDBench Settings ===" -ForegroundColor Cyan
+Write-Host "Loop         : $($script:Result.Loop)"
+Write-Host "Wait Time    : $($script:Result.WaitTimeMin) min"
+Write-Host "Test Profiles: $($script:Result.TestProfiles -join ', ')"
+Write-Host ""
+
+# $script:Result is now ready for use in the rest of your script
+#endregion
+
+
 $TargetDiskNumber = 1
 try {
 $disk = Get-Disk -Number $TargetDiskNumber -ErrorAction Stop
@@ -95,10 +395,13 @@ exit
 
 $root=(get-childitem -Directory "$PSScriptRoot/vdbench*").FullName
 set-location $root
-$loop=1
+$loop=$script:Result.Loop
+$waittimes=[int32]$($script:Result.WaitTimeMin)*60
+
 $fills=@("25","100")
 foreach($fill in $fills){
 fio.exe --filename=\\.\PhysicalDrive1 --direct=1 --rw=write --bs=128k --iodepth=32 --randrepeat=0 --thread --name=128k_writefull --numjobs=1 --description="128k_writefull" --group_reporting "--size=$($fill)%" --output="write$($fill)%.txt"
+start-sleep -s $waittimes
 $datetime=get-date -format "_yyMMdd-HHmm"
 $resultfmain=(join-path $root "Fill$($fill)-Result$($datetime)" ).ToString()
 new-item -ItemType Directory -path $resultfmain|Out-Null
@@ -111,17 +414,25 @@ if($oldfolders){
     Move-Item $oldfolders.FullName -Destination $backupfolder.FullName -ErrorAction SilentlyContinue
 }
 
+   if($script:Result.TestProfiles -contains "Random_Read_4k_128"){
     & "./Maxio_MultiDrive_define_RR4K.cmd" 1 128 max Random_Read_4k_128_thread
     Start-Sleep -Seconds 20
+    }
 
+   if($script:Result.TestProfiles -contains "Random_Write_4k_64"){
     & "./Maxio_MultiDrive_define_RW4K.cmd" 1 64 max Random_Write_4k_64_thread
     Start-Sleep -Seconds 20
+    }
 
+   if($script:Result.TestProfiles -contains "Sequential_Read_64k_16"){
     & "./Maxio_MultiDrive_define_SR64K.cmd" 1 16 max Sequential_Read_64k_16_thread
     Start-Sleep -Seconds 20
+    }
 
+   if($script:Result.TestProfiles -contains "Sequential_Write_64k_8"){
     & "./Maxio_MultiDrive_define_SW64K.cmd" 1 8 max Sequential_Write_64k_8_thread
     Start-Sleep -Seconds 20
+    }
 
 $resultfolders = Get-ChildItem $root -Directory | Where-Object { $_.Name -like "*thread*"}
 if ($resultfolders) {       
@@ -137,4 +448,3 @@ Stop-Transcript
 # Load the assembly for the popup
 
 [System.Windows.Forms.MessageBox]::Show("The VDBench test has completed successfully.", "Test Finished", "OK", "Information")
-
