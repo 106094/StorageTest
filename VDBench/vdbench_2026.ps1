@@ -168,7 +168,15 @@ Add-Type -AssemblyName WindowsBase
 
         <!-- Checkboxes -->
         <StackPanel Grid.Row="6">
-            <TextBlock Text="Test Profiles" Style="{StaticResource FieldLabel}" Margin="0,0,0,8"/>
+            <!-- Header Row with Text and Checkboxes side by side -->
+            <Grid Margin="0,0,0,8">
+                <TextBlock Text="Test Profiles" Style="{StaticResource FieldLabel}" HorizontalAlignment="Left" VerticalAlignment="Center"/>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                    <CheckBox x:Name="ChkFill25" Content="25%" Style="{StaticResource ModernCheck}" IsChecked="True" Margin="0,0,12,0"/>
+                    <CheckBox x:Name="ChkFill100" Content="100%" Style="{StaticResource ModernCheck}" IsChecked="True" Margin="0,0,4,0"/>
+                </StackPanel>
+            </Grid>
+            
             <Border Background="#2A2A3E" BorderBrush="#45475A" BorderThickness="1" CornerRadius="6" Padding="14,10">
                 <StackPanel>
                     <CheckBox x:Name="ChkRR4k"   Content="Random_Read_4k_128"    Style="{StaticResource ModernCheck}" IsChecked="True"/>
@@ -181,8 +189,8 @@ Add-Type -AssemblyName WindowsBase
 
         <!-- Buttons -->
         <StackPanel Grid.Row="8" Orientation="Horizontal" HorizontalAlignment="Right">
-            <Button x:Name="BtnCancel" Content="Cancel" Style="{StaticResource CancelBtn}" Margin="0,0,10,0"/>
-            <Button x:Name="BtnDone"   Content="Done"   Style="{StaticResource DoneBtn}"/>
+            <Button x:Name="BtnCancel" Content="Cancel" Style="{StaticResource CancelBtn}" Margin="0,0,12,0"/>
+            <Button x:Name="BtnDone" Content="Done" Style="{StaticResource DoneBtn}"/>
         </StackPanel>
     </Grid>
 </Window>
@@ -200,6 +208,9 @@ $chkSR64k     = $window.FindName("ChkSR64k")
 $chkSW64k     = $window.FindName("ChkSW64k")
 $btnCancel    = $window.FindName("BtnCancel")
 $btnDone      = $window.FindName("BtnDone")
+$chkFill25 = $window.FindName("ChkFill25")
+$chkFill100 = $window.FindName("ChkFill100")
+
 
 # ── Numeric-only validation ───────────────────────────────────────────────────
 $numericFilter = {
@@ -258,6 +269,13 @@ $btnDone.Add_Click({
         return
     }
 
+    $fillsList = [System.Collections.Generic.List[string]]::new()
+    
+    if ($chkFill25.IsChecked -eq $true) { $fillsList.Add("25") }
+    if ($chkFill100.IsChecked -eq $true) { $fillsList.Add("100") }
+    
+    # Store globally or script-scoped to use outside the form
+    $fills = $fillsList.ToArray()
     # Collect selected profiles
     $profiles = @()
     if ($chkRR4k.IsChecked)  { $profiles += "Random_Read_4k_128" }
@@ -278,6 +296,8 @@ $btnDone.Add_Click({
         Loop          = [int]$loopVal
         WaitTimeMin   = [int]$waitVal
         TestProfiles  = $profiles
+        fillrate      = $fills
+
     }
 
     $window.Close()
@@ -295,6 +315,7 @@ if ($null -eq $script:Result -or $script:Result.TestProfiles.count -eq 0) {
 Write-Host "`n=== VDBench Settings ===" -ForegroundColor Cyan
 Write-Host "Loop         : $($script:Result.Loop)"
 Write-Host "Wait Time    : $($script:Result.WaitTimeMin) min"
+Write-Host "filled rate  : $($script:Result.fillrate -join ', ')"
 Write-Host "Test Profiles: $($script:Result.TestProfiles -join ', ')"
 Write-Host ""
 
@@ -398,7 +419,7 @@ set-location $root
 $loop=$script:Result.Loop
 $waittimes=[int32]$($script:Result.WaitTimeMin)*60
 
-$fills=@("25","100")
+$fills=$script:Result.fillrate
 foreach($fill in $fills){
 fio.exe --filename=\\.\PhysicalDrive1 --direct=1 --rw=write --bs=128k --iodepth=32 --randrepeat=0 --thread --name=128k_writefull --numjobs=1 --description="128k_writefull" --group_reporting "--size=$($fill)%" --output="write$($fill)%.txt"
 start-sleep -s $waittimes
