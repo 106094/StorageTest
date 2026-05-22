@@ -1,4 +1,4 @@
-Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy Bypass -Force
+﻿Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy Bypass -Force
 Add-Type -AssemblyName System.Windows.Forms
 $transcriptPath = Join-Path $PSScriptRoot "log$(get-date -format "_yyMMdd-HHmm").txt"
 Start-Transcript -Path $transcriptPath -Append
